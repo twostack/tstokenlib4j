@@ -7,6 +7,24 @@ import org.twostack.bitcoin4j.transaction.UnlockingScriptBuilder;
 
 import java.io.IOException;
 
+/**
+ * Builds the unlocking script for a PP3 partial witness locking script.
+ *
+ * <p>Supported actions:
+ * <ul>
+ *   <li>Unlock (forUnlock) -- standard partial witness unlock with preimage and partial hash</li>
+ *   <li>Burn (forBurn) -- destroy the partial witness output with owner signature</li>
+ * </ul>
+ *
+ * <p>Instances are created through the static factory methods {@link #forUnlock}
+ * and {@link #forBurn(PublicKey)}. The constructor is private.
+ *
+ * <p>The BURN action requires a signature to be added via
+ * {@link #addSignature(TransactionSignature)} before {@link #getUnlockingScript()} will
+ * produce a non-empty script. The UNLOCK action does not require a signature.
+ *
+ * <p>The last item pushed onto the script stack is always the action's opValue integer.
+ */
 public class PartialWitnessUnlockBuilder extends UnlockingScriptBuilder {
 
     private final TokenAction action;
@@ -29,6 +47,15 @@ public class PartialWitnessUnlockBuilder extends UnlockingScriptBuilder {
         this.ownerPubKey = ownerPubKey;
     }
 
+    /**
+     * Creates a builder for the UNLOCK action. No signature is required.
+     *
+     * @param preImage                sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param partialHash             partial hash for witness verification
+     * @param partialWitnessPreImage  preimage for partial witness hash verification
+     * @param fundingTxId             transaction ID of the funding input
+     * @return a new builder configured for partial witness unlock
+     */
     public static PartialWitnessUnlockBuilder forUnlock(
             byte[] preImage, byte[] partialHash,
             byte[] partialWitnessPreImage, byte[] fundingTxId) {
@@ -38,6 +65,13 @@ public class PartialWitnessUnlockBuilder extends UnlockingScriptBuilder {
                 null);
     }
 
+    /**
+     * Creates a builder for the BURN action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param ownerPubKey public key of the current token owner
+     * @return a new builder configured for burn
+     */
     public static PartialWitnessUnlockBuilder forBurn(PublicKey ownerPubKey) {
         return new PartialWitnessUnlockBuilder(
                 TokenAction.BURN,
@@ -45,6 +79,15 @@ public class PartialWitnessUnlockBuilder extends UnlockingScriptBuilder {
                 ownerPubKey);
     }
 
+    /**
+     * Builds and returns the unlocking script by dispatching to the appropriate
+     * private build method based on the configured action.
+     *
+     * <p>For BURN, if no signature has been added an empty script is returned.
+     * The last item pushed is always the action's opValue integer (UNLOCK=0, BURN=1).
+     *
+     * @return the unlocking {@link Script}, or an empty script when prerequisites are not met
+     */
     @Override
     public Script getUnlockingScript() {
         switch (action) {

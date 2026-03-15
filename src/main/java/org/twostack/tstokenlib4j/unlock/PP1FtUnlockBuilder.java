@@ -8,6 +8,28 @@ import org.twostack.bitcoin4j.transaction.UnlockingScriptBuilder;
 
 import java.io.IOException;
 
+/**
+ * Builds the unlocking script for a PP1 Fungible Token (FT) locking script.
+ *
+ * <p>Supported actions:
+ * <ul>
+ *   <li>{@link FungibleTokenAction#MINT} -- initial token minting</li>
+ *   <li>{@link FungibleTokenAction#TRANSFER} -- full-amount transfer to a new holder</li>
+ *   <li>{@link FungibleTokenAction#SPLIT_TRANSFER} -- partial transfer, splitting the token amount</li>
+ *   <li>{@link FungibleTokenAction#MERGE} -- merge two token UTXOs into one</li>
+ *   <li>{@link FungibleTokenAction#BURN} -- permanent destruction of the token</li>
+ * </ul>
+ *
+ * <p>Instances are created through the static factory methods {@link #forMint},
+ * {@link #forTransfer}, {@link #forSplitTransfer}, {@link #forMerge}, and {@link #forBurn}.
+ * The constructor is private.
+ *
+ * <p>The TRANSFER, SPLIT_TRANSFER, MERGE, and BURN actions require a signature to be added via
+ * {@link #addSignature(TransactionSignature)} before {@link #getUnlockingScript()} will
+ * produce a non-empty script. The MINT action does not require a signature.
+ *
+ * <p>The last item pushed onto the script stack is always the action's opValue integer.
+ */
 public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
 
     private final FungibleTokenAction action;
@@ -67,6 +89,14 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
         this.parentPP1FtIndexB = parentPP1FtIndexB;
     }
 
+    /**
+     * Creates a builder for the MINT action. No signature is required.
+     *
+     * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessPadding      padding bytes for witness transaction alignment
+     * @return a new builder configured for minting
+     */
     public static PP1FtUnlockBuilder forMint(
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding) {
         return new PP1FtUnlockBuilder(
@@ -78,6 +108,22 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
                 null, 0, 0);
     }
 
+    /**
+     * Creates a builder for the TRANSFER action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param preImage           sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param pp2Output          serialized PP2 witness output for output structure verification
+     * @param ownerPubKey        public key of the current token owner
+     * @param changePKH          20-byte HASH160 for witness change output
+     * @param changeAmount       satoshi amount for witness change
+     * @param tokenLHS           left-hand side of serialized token output for structure verification
+     * @param prevTokenTx        raw bytes of previous token transaction for inductive proof
+     * @param witnessPadding     padding bytes for witness transaction alignment
+     * @param parentOutputCount  number of outputs in the parent transaction
+     * @param parentPP1FtIndex   index of the PP1 FT output in the parent transaction
+     * @return a new builder configured for transfer
+     */
     public static PP1FtUnlockBuilder forTransfer(
             byte[] preImage, byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
@@ -93,6 +139,27 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
                 null, 0, 0);
     }
 
+    /**
+     * Creates a builder for the SPLIT_TRANSFER action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param preImage             sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param pp2RecipientOutput   serialized PP2 witness output for the recipient
+     * @param pp2ChangeOutput      serialized PP2 witness output for the token change
+     * @param ownerPubKey          public key of the current token owner
+     * @param changePKH            20-byte HASH160 for witness change output
+     * @param changeAmount         satoshi amount for witness change
+     * @param tokenLHS             left-hand side of serialized token output for structure verification
+     * @param prevTokenTx          raw bytes of previous token transaction for inductive proof
+     * @param witnessPadding       padding bytes for witness transaction alignment
+     * @param recipientAmount      satoshi amount being sent to the recipient
+     * @param tokenChangeAmount    satoshi amount remaining as token change
+     * @param recipientPKH         20-byte HASH160 of the recipient's public key
+     * @param myOutputIndex        index of this token's output in the transaction
+     * @param parentOutputCount    number of outputs in the parent transaction
+     * @param parentPP1FtIndex     index of the PP1 FT output in the parent transaction
+     * @return a new builder configured for split transfer
+     */
     public static PP1FtUnlockBuilder forSplitTransfer(
             byte[] preImage, byte[] pp2RecipientOutput, byte[] pp2ChangeOutput,
             PublicKey ownerPubKey, byte[] changePKH, long changeAmount,
@@ -111,6 +178,25 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
                 null, 0, 0);
     }
 
+    /**
+     * Creates a builder for the MERGE action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param pp2Output           serialized PP2 witness output for output structure verification
+     * @param ownerPubKey         public key of the current token owner
+     * @param changePKH           20-byte HASH160 for witness change output
+     * @param changeAmount        satoshi amount for witness change
+     * @param tokenLHS            left-hand side of serialized token output for structure verification
+     * @param prevTokenTxA        raw bytes of the first previous token transaction for inductive proof
+     * @param prevTokenTxB        raw bytes of the second previous token transaction for inductive proof
+     * @param witnessPadding      padding bytes for witness transaction alignment
+     * @param parentOutputCountA  number of outputs in the first parent transaction
+     * @param parentOutputCountB  number of outputs in the second parent transaction
+     * @param parentPP1FtIndexA   index of the PP1 FT output in the first parent transaction
+     * @param parentPP1FtIndexB   index of the PP1 FT output in the second parent transaction
+     * @return a new builder configured for merge
+     */
     public static PP1FtUnlockBuilder forMerge(
             byte[] preImage, byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
@@ -128,6 +214,13 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
                 prevTokenTxB, parentOutputCountB, parentPP1FtIndexB);
     }
 
+    /**
+     * Creates a builder for the BURN action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param ownerPubKey public key of the current token owner
+     * @return a new builder configured for burn
+     */
     public static PP1FtUnlockBuilder forBurn(PublicKey ownerPubKey) {
         return new PP1FtUnlockBuilder(
                 FungibleTokenAction.BURN,
@@ -138,6 +231,16 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
                 null, 0, 0);
     }
 
+    /**
+     * Builds and returns the unlocking script by dispatching to the appropriate
+     * private build method based on the configured {@link FungibleTokenAction}.
+     *
+     * <p>For TRANSFER, SPLIT_TRANSFER, MERGE, and BURN, if no signature has been added
+     * an empty script is returned. The last item pushed is always the action's opValue
+     * integer (MINT=0, TRANSFER=1, SPLIT_TRANSFER=2, MERGE=3, BURN=4).
+     *
+     * @return the unlocking {@link Script}, or an empty script when prerequisites are not met
+     */
     @Override
     public Script getUnlockingScript() {
         switch (action) {

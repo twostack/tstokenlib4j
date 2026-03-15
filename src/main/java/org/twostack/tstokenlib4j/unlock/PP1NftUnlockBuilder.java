@@ -8,6 +8,25 @@ import org.twostack.bitcoin4j.transaction.UnlockingScriptBuilder;
 
 import java.io.IOException;
 
+/**
+ * Builds the unlocking script for a PP1 Non-Fungible Token (NFT) locking script.
+ *
+ * <p>Supported actions:
+ * <ul>
+ *   <li>{@link TokenAction#ISSUANCE} -- initial token issuance with Rabin identity binding</li>
+ *   <li>{@link TokenAction#TRANSFER} -- ownership transfer to a new holder</li>
+ *   <li>{@link TokenAction#BURN} -- permanent destruction of the token</li>
+ * </ul>
+ *
+ * <p>Instances are created through the static factory methods {@link #forIssuance},
+ * {@link #forTransfer}, and {@link #forBurn}. The constructor is private.
+ *
+ * <p>The TRANSFER and BURN actions require a signature to be added via
+ * {@link #addSignature(TransactionSignature)} before {@link #getUnlockingScript()} will
+ * produce a non-empty script. The ISSUANCE action does not require a signature.
+ *
+ * <p>The last item pushed onto the script stack is always the action's opValue integer.
+ */
 public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
 
     private final TokenAction action;
@@ -51,6 +70,19 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
         this.prevTokenTx = prevTokenTx;
     }
 
+    /**
+     * Creates a builder for the ISSUANCE action. No signature is required.
+     *
+     * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessPadding      padding bytes for witness transaction alignment
+     * @param rabinN              Rabin signature public key N component
+     * @param rabinS              Rabin signature S component
+     * @param rabinPadding        padding value for Rabin signature verification
+     * @param identityTxId        transaction ID anchoring the token's identity
+     * @param ed25519PubKey       Ed25519 public key for identity verification
+     * @return a new builder configured for issuance
+     */
     public static PP1NftUnlockBuilder forIssuance(
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
@@ -63,6 +95,20 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
                 null, null, null, 0, null, null);
     }
 
+    /**
+     * Creates a builder for the TRANSFER action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param preImage        sighash preimage of the transaction for OP_PUSH_TX validation
+     * @param pp2Output       serialized PP2 witness output for output structure verification
+     * @param ownerPubKey     public key of the current token owner
+     * @param changePKH       20-byte HASH160 for witness change output
+     * @param changeAmount    satoshi amount for witness change
+     * @param tokenLHS        left-hand side of serialized token output for structure verification
+     * @param prevTokenTx     raw bytes of previous token transaction for inductive proof
+     * @param witnessPadding  padding bytes for witness transaction alignment
+     * @return a new builder configured for transfer
+     */
     public static PP1NftUnlockBuilder forTransfer(
             byte[] preImage, byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
@@ -77,6 +123,13 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
                 tokenLHS, prevTokenTx);
     }
 
+    /**
+     * Creates a builder for the BURN action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param ownerPubKey public key of the current token owner
+     * @return a new builder configured for burn
+     */
     public static PP1NftUnlockBuilder forBurn(PublicKey ownerPubKey) {
         return new PP1NftUnlockBuilder(
                 TokenAction.BURN,
@@ -87,6 +140,15 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
                 null, 0, null, null);
     }
 
+    /**
+     * Builds and returns the unlocking script by dispatching to the appropriate
+     * private build method based on the configured {@link TokenAction}.
+     *
+     * <p>For TRANSFER and BURN, if no signature has been added an empty script is returned.
+     * The last item pushed is always the action's opValue integer (ISSUANCE=0, TRANSFER=1, BURN=2).
+     *
+     * @return the unlocking {@link Script}, or an empty script when prerequisites are not met
+     */
     @Override
     public Script getUnlockingScript() {
         switch (action) {

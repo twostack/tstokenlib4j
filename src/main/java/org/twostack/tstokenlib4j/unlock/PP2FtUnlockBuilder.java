@@ -8,6 +8,24 @@ import org.twostack.bitcoin4j.transaction.UnlockingScriptBuilder;
 
 import java.io.IOException;
 
+/**
+ * Builds the unlocking script for a PP2 Fungible Token (FT) witness locking script.
+ *
+ * <p>Supported actions:
+ * <ul>
+ *   <li>Normal (forNormal) -- standard FT witness unlock using the outpoint transaction ID</li>
+ *   <li>Burn (forBurn) -- destroy the FT witness output with owner signature</li>
+ * </ul>
+ *
+ * <p>Instances are created through the static factory methods {@link #forNormal(byte[])}
+ * and {@link #forBurn(PublicKey)}. The constructor is private.
+ *
+ * <p>The BURN action requires a signature to be added via
+ * {@link #addSignature(TransactionSignature)} before {@link #getUnlockingScript()} will
+ * produce a non-empty script. The NORMAL action does not require a signature.
+ *
+ * <p>The last item pushed onto the script stack is always the action's opValue integer.
+ */
 public class PP2FtUnlockBuilder extends UnlockingScriptBuilder {
 
     private final byte[] outpointTxId;
@@ -20,14 +38,36 @@ public class PP2FtUnlockBuilder extends UnlockingScriptBuilder {
         this.isBurn = isBurn;
     }
 
+    /**
+     * Creates a builder for the NORMAL FT witness unlock action. No signature is required.
+     *
+     * @param outpointTxId transaction ID of the outpoint being spent
+     * @return a new builder configured for normal FT witness unlock
+     */
     public static PP2FtUnlockBuilder forNormal(byte[] outpointTxId) {
         return new PP2FtUnlockBuilder(outpointTxId, null, false);
     }
 
+    /**
+     * Creates a builder for the BURN FT witness action. Requires {@link #addSignature(TransactionSignature)}
+     * before {@link #getUnlockingScript()} produces output.
+     *
+     * @param ownerPubKey public key of the current token owner
+     * @return a new builder configured for burn
+     */
     public static PP2FtUnlockBuilder forBurn(PublicKey ownerPubKey) {
         return new PP2FtUnlockBuilder(null, ownerPubKey, true);
     }
 
+    /**
+     * Builds and returns the unlocking script.
+     *
+     * <p>For NORMAL, pushes the outpoint transaction ID followed by opValue 0.
+     * For BURN, if no signature has been added an empty script is returned; otherwise
+     * pushes the owner public key, signature, and opValue 1.
+     *
+     * @return the unlocking {@link Script}, or an empty script when prerequisites are not met
+     */
     @Override
     public Script getUnlockingScript() {
         if (isBurn) {
