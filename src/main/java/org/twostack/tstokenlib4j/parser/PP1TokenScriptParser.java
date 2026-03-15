@@ -27,8 +27,13 @@ import java.util.Optional;
  * }</pre>
  *
  * @since 0.1.0
+ * @deprecated Use {@link org.twostack.bitcoin4j.script.ScriptTemplateRegistry#identifyScript}
+ *             with the PP1 templates registered via {@link PP1TemplateRegistrar#registerAll()}.
+ *             The typed ScriptInfo subclasses (e.g. {@link PP1NftScriptInfo}) provide
+ *             archetype-specific field extraction beyond just ownerPKH and tokenId.
  * @see <a href="https://github.com/twostack/tsl1">TSL1 Specification</a>
  */
+@Deprecated
 public class PP1TokenScriptParser {
 
     /** Minimum script length: 1 + 20 + 1 + 32 = 54 bytes. */
