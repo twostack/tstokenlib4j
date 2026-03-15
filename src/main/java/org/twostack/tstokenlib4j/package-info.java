@@ -1,6 +1,6 @@
 /**
  * Java library for building and unlocking Bitcoin token scripts per the
- * <a href="https://github.com/twostack/tsl1">TSL1 (Two Stack Language) token specification</a>.
+ * <a href="https://github.com/twostack/tsl1">TSL1 (Twostack Layer 1) token specification</a>.
  *
  * <p>The library supports six token archetypes: Fungible Tokens (FT), Non-Fungible Tokens (NFT),
  * Restricted Fungible Tokens (RFT), Restricted Non-Fungible Tokens (RNFT), State Machines (SM),

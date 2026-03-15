@@ -1,6 +1,6 @@
 # tstokenlib4j
 
-A Java library for building and unlocking Bitcoin token scripts per the [TSL1 (Two Stack Language) token specification](https://github.com/twostack/tsl1). Provides template-driven locking script (scriptPubKey) generation and action-driven unlocking script (scriptSig) generation for six token archetypes.
+A Java library for building and unlocking Bitcoin token scripts per the [TSL1 (Twostack Layer 1) token specification](https://github.com/twostack/tsl1). Provides template-driven locking script (scriptPubKey) generation and action-driven unlocking script (scriptSig) generation for six token archetypes.
 
 ## Token Types
 
