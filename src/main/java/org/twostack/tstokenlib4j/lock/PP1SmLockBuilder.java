@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Builds the PP1 (Proof Part 1) locking script for a TSL1 state-machine token (SM).
+ * Builds the PP1 (Plugpoint 1) locking script for a TSL1 state-machine token (SM).
  *
  * <p>A state-machine token models a multi-step workflow (e.g., an escrow or milestone-based
  * payment) between a merchant and a customer. The script encodes the current state, the

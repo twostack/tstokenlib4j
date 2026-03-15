@@ -9,7 +9,7 @@ import org.twostack.tstokenlib4j.template.TemplateDescriptor;
 import org.twostack.tstokenlib4j.template.TemplateLoader;
 
 /**
- * Builds the PP2 (Proof Part 2) locking script for a TSL1 fungible-token (FT) witness output.
+ * Builds the PP2 (Plugpoint 2) locking script for a TSL1 fungible-token (FT) witness output.
  *
  * <p>The PP2 FT witness script extends the NFT witness with two additional output-index
  * parameters that link the witness to the corresponding PP1 FT output and the PP2 output

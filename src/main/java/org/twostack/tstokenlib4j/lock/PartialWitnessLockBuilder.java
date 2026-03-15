@@ -7,7 +7,7 @@ import org.twostack.tstokenlib4j.template.TemplateDescriptor;
 import org.twostack.tstokenlib4j.template.TemplateLoader;
 
 /**
- * Builds the PP3 (Proof Part 3) locking script for a TSL1 NFT partial-witness output.
+ * Builds the PP3 (Plugpoint 3) locking script for a TSL1 NFT partial-witness output.
  *
  * <p>The PP3 partial-witness script is a lightweight witness used during NFT transfers.
  * It requires only the owner's public-key hash. The builder loads the pre-compiled

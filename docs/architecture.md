@@ -16,7 +16,7 @@ Every token transaction produces outputs across three layers:
 
 ### PP1 — Token Logic Layer
 
-The PP1 (Proof Part 1) script contains the full inductive proof logic. It is the core of the token system. When spent, it validates:
+The PP1 (Plugpoint 1) script contains the full inductive proof logic. It is the core of the token system. When spent, it validates:
 
 - **Ownership**: The spender provides a valid signature matching the `ownerPKH` embedded in the script.
 - **Token identity**: The `tokenId` is preserved across transactions.
@@ -37,7 +37,7 @@ Each token archetype has its own PP1 script template:
 
 ### PP2 — Witness Layer
 
-The PP2 (Proof Part 2) script is a secondary locking script that anchors the token transaction to a specific UTXO outpoint. It serves two purposes:
+The PP2 (Plugpoint 2) script is a secondary locking script that "plugs into" the token transaction, anchoring it to a specific UTXO outpoint. It serves two purposes:
 
 1. **Outpoint binding**: Ensures the token UTXO can only be spent in a transaction that also spends a specific witness UTXO, preventing replay attacks.
 2. **Witness change**: Handles change from the witness funding, allowing transaction fees to be paid from the witness UTXO.
@@ -51,7 +51,7 @@ PP2 scripts are simpler than PP1 and have fewer parameters:
 
 ### PP3 / Partial Witness — Funding Layer
 
-The PP3 (Partial Witness) script is the simplest layer — a modified P2PKH script for the witness funding input. It provides the satoshis that pay for the transaction while the token UTXOs carry the token value.
+The PP3 (Plugpoint 3 / Partial Witness) script is the simplest layer — a modified P2PKH script for the witness funding input. It provides the satoshis that pay for the transaction while the token UTXOs carry the token value.
 
 | Variant | Template |
 |---------|----------|

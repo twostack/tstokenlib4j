@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Builds the PP1 (Proof Part 1) locking script for a TSL1 restricted fungible token (RFT).
+ * Builds the PP1 (Plugpoint 1) locking script for a TSL1 restricted fungible token (RFT).
  *
  * <p>An RFT extends the standard fungible token with a Rabin oracle public-key hash for
  * issuer-controlled transfer restrictions and a flags field that encodes the current

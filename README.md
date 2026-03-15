@@ -19,9 +19,9 @@ Each token transaction also uses **PP2** (witness) and **PP3/PartialWitness** (f
 
 | Term | Description |
 |------|-------------|
-| **PP1 (Proof Part 1)** | Primary token locking script containing the inductive proof logic. Encodes ownership, token identity, and archetype-specific parameters. |
-| **PP2 (Proof Part 2)** | Witness locking script that anchors a token transaction to a specific UTXO outpoint and handles witness change. |
-| **PP3 / Partial Witness** | Lightweight witness script for the witness funding input. |
+| **PP1 (Plugpoint 1)** | Primary token locking script containing the inductive proof logic. Encodes ownership, token identity, and archetype-specific parameters. |
+| **PP2 (Plugpoint 2)** | Witness locking script that "plugs into" the token transaction, anchoring it to a specific UTXO outpoint and handling witness change. |
+| **PP3 (Plugpoint 3) / Partial Witness** | Lightweight witness script that plugs into the witness funding input. |
 | **ownerPKH** | 20-byte HASH160 of the token owner's public key. |
 | **tokenId** | 32-byte unique token identifier, typically the genesis transaction ID. |
 | **rabinPubKeyHash** | 20-byte HASH160 of a Rabin signature public key, used for identity anchoring in NFTs and restricted tokens. |

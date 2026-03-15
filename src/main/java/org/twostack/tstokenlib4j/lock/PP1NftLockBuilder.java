@@ -7,7 +7,7 @@ import org.twostack.tstokenlib4j.template.TemplateDescriptor;
 import org.twostack.tstokenlib4j.template.TemplateLoader;
 
 /**
- * Builds the PP1 (Proof Part 1) locking script for a TSL1 non-fungible token (NFT).
+ * Builds the PP1 (Plugpoint 1) locking script for a TSL1 non-fungible token (NFT).
  *
  * <p>The PP1 NFT script encodes the inductive proof that establishes ownership and
  * authenticity of a unique token. It loads the pre-compiled script template from

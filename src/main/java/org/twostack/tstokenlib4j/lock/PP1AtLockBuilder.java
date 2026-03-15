@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Builds the PP1 (Proof Part 1) locking script for a TSL1 appendable token (AT).
+ * Builds the PP1 (Plugpoint 1) locking script for a TSL1 appendable token (AT).
  *
  * <p>An appendable token is an NFT that accumulates "stamps" (endorsements) over its
  * lifetime. The script encodes the issuer's public-key hash, the current stamp count,

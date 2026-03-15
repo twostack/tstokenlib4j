@@ -9,7 +9,7 @@ import org.twostack.tstokenlib4j.template.TemplateDescriptor;
 import org.twostack.tstokenlib4j.template.TemplateLoader;
 
 /**
- * Builds the PP2 (Proof Part 2) locking script for a TSL1 NFT witness output.
+ * Builds the PP2 (Plugpoint 2) locking script for a TSL1 NFT witness output.
  *
  * <p>The PP2 witness script provides the second part of the inductive proof for NFT
  * transfers. It records the previous transaction's outpoint, the witness change address

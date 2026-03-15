@@ -10,7 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Builds the PP1 (Proof Part 1) locking script for a TSL1 restricted non-fungible token (RNFT).
+ * Builds the PP1 (Plugpoint 1) locking script for a TSL1 restricted non-fungible token (RNFT).
  *
  * <p>An RNFT extends the standard NFT with a Rabin oracle public-key hash for
  * issuer-controlled transfer restrictions and a flags field that encodes the current

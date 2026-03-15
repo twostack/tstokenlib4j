@@ -32,9 +32,9 @@ src/main/resources/templates/
 
 ## Naming Conventions
 
-- **PP1*** — First-layer inductive proof scripts (token logic). Contains ownership, tokenId, and archetype-specific validation.
-- **PP2*** — Second-layer witness scripts. Anchors token transactions to a specific UTXO outpoint.
-- **PP3** / **PartialWitness*** — Third-layer partial witness scripts for witness funding inputs.
+- **PP1*** — Plugpoint 1: token logic scripts with inductive proof validation. Contains ownership, tokenId, and archetype-specific validation.
+- **PP2*** — Plugpoint 2: witness scripts that "plug into" token transactions. Anchors to a specific UTXO outpoint.
+- **PP3** / **PartialWitness*** — Plugpoint 3: partial witness scripts for witness funding inputs.
 - **\*Ft** — Fungible token variant
 - **\*Nft** — Non-fungible token variant
 - **\*Rft** — Restricted fungible token variant
