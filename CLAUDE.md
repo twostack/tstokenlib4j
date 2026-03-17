@@ -1,6 +1,6 @@
 # tstokenlib4j
 
-Java library for building and unlocking Bitcoin token scripts per the [TSL1 specification](https://github.com/twostack/tsl1).
+Java library for building complete TSL1 token transactions per the [TSL1 specification](https://github.com/twostack/tsl1).
 
 ## Build & Test
 
@@ -13,14 +13,88 @@ Java library for building and unlocking Bitcoin token scripts per the [TSL1 spec
 
 Requires `org.twostack:bitcoin4j:1.7.0` in mavenLocal.
 
+## Usage
+
+The primary API consists of six **Tool** classes in the `transaction` package. Each Tool
+assembles complete multi-output token transactions for a specific token archetype:
+
+```java
+// Example: Issue an NFT
+TokenTool tool = new TokenTool(NetworkAddressType.TEST_PKH);
+Transaction issuanceTx = tool.createTokenIssuanceTxn(
+        fundingTx, signer, recipientAddress,
+        witnessFundingTxId, rabinPubKeyHash, metadataBytes);
+
+// Example: Mint a fungible token
+FungibleTokenTool ftTool = new FungibleTokenTool(NetworkAddressType.TEST_PKH);
+Transaction mintTx = ftTool.createFungibleMintTxn(
+        fundingTx, signer, recipientAddress,
+        witnessFundingTxId, 1000, metadataBytes);
+
+// Example: Create a witness proof
+Transaction witnessTx = tool.createWitnessTxn(
+        signer, fundingTx, tokenTx, parentTxBytes,
+        ownerPubkey, changePKH, TokenAction.ISSUANCE,
+        rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
+```
+
+### Tool Classes
+
+| Tool Class | Archetype | Operations |
+|---|---|---|
+| `TokenTool` | NFT | issue, transfer, witness, burn |
+| `FungibleTokenTool` | FT | mint, transfer, split, merge, witness, burn |
+| `RestrictedTokenTool` | RNFT | issue, transfer, witness, redeem, burn |
+| `RestrictedFungibleTokenTool` | RFT | mint, transfer, split, merge, witness, redeem, burn |
+| `AppendableTokenTool` | AT | issue, stamp, transfer, witness, redeem, burn |
+| `StateMachineTool` | SM | create, enroll, transition, settle, timeout, witness, dual-witness, burn |
+
+Each Tool handles:
+- Multi-output transaction assembly (5-output standard, 7–8 for settle/split)
+- Sighash preimage computation for each proof output
+- Two-pass witness transaction building (padding recalculation)
+- Metadata forwarding across transfers
+- Balance conservation for splits/merges
+
+### Transaction Output Layouts
+
+**Standard (5 outputs)** — issuance, transfer, enroll, transition:
+```
+Output[0]: Change (P2PKH to owner)
+Output[1]: PP1 variant (token state lock, 1 sat)
+Output[2]: PP2 variant (witness bridge, 1 sat)
+Output[3]: PP3/PartialWitness (SHA256 verifier, 1 sat)
+Output[4]: Metadata (OP_RETURN, 0 sats)
+```
+
+**FT Split (8 outputs)**:
+```
+Output[0]: Change
+Output[1–3]: Recipient triplet (PP1_FT, PP2-FT, PP3-FT)
+Output[4–6]: Change triplet (PP1_FT, PP2-FT, PP3-FT)
+Output[7]: Metadata
+```
+
+**SM Settle (7 outputs)**: Change, CustomerReward, MerchantPayment, PP1_SM, PP2, PP3, Metadata
+
+**SM Timeout (6 outputs)**: Change, MerchantRefund, PP1_SM, PP2, PP3, Metadata
+
+**Witness (1 output)**: ModP2PKH locked to current owner
+
 ## Project Structure
 
 ```
 src/main/java/org/twostack/tstokenlib4j/
+├── transaction/  # Tool classes — primary API for transaction assembly
+│   ├── TokenTool, FungibleTokenTool, RestrictedTokenTool
+│   ├── RestrictedFungibleTokenTool, AppendableTokenTool, StateMachineTool
+│   ├── TransactionUtils          — TX serialization helpers (getTxLHS, calculatePaddingBytes)
+│   └── PartialSha256             — block-at-a-time SHA256 for partial hash proofs
 ├── encoding/     # AmountEncoder, PushdataEncoder, ScriptNumberEncoder
 ├── lock/         # 12 locking script (scriptPubKey) builders
 ├── unlock/       # 11 unlocking script (scriptSig) builders + 6 action enums
 ├── parser/       # PP1TokenScriptParser — extracts ownerPKH/tokenId from PP1* scripts
+├── crypto/       # Rabin signature utilities (sign, verify, key generation)
 └── template/     # TemplateLoader + TemplateDescriptor — JSON template loading/caching
 
 src/main/resources/templates/
@@ -43,6 +117,13 @@ src/main/resources/templates/
 - **\*At** — Appendable token variant
 
 ## Key Patterns
+
+### Tool Classes (transaction package)
+- Constructor takes `NetworkAddressType` and optional `BigInteger defaultFee` (defaults to 135 satoshis)
+- All transaction-building methods return `Transaction` and throw `TransactionException, IOException, SigHashException, SignatureDecodeException`
+- Two-pass witness building: first pass computes sighash preimage, second pass recalculates SHA256 block-alignment padding
+- `getOutpoint(byte[] txId, int outputIndex)` produces 36-byte outpoints (txid + LE index)
+- Metadata forwarding: issuance creates via `MetadataLockBuilder`, transfers carry forward via `DefaultLockBuilder`
 
 ### Lock Builders
 - All extend `org.twostack.bitcoin4j.transaction.LockingScriptBuilder`

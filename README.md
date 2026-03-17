@@ -1,34 +1,6 @@
 # tstokenlib4j
 
-A Java library for building and unlocking Bitcoin token scripts per the [TSL1 (Twostack Layer 1) token specification](https://github.com/twostack/tsl1). Provides template-driven locking script (scriptPubKey) generation and action-driven unlocking script (scriptSig) generation for six token archetypes.
-
-## Token Types
-
-| Archetype | Lock Builder | Unlock Builder | Actions |
-|-----------|-------------|----------------|---------|
-| Fungible Token (FT) | `PP1FtLockBuilder` | `PP1FtUnlockBuilder` | Mint, Transfer, Split Transfer, Merge, Burn |
-| Non-Fungible Token (NFT) | `PP1NftLockBuilder` | `PP1NftUnlockBuilder` | Issuance, Transfer, Burn |
-| Restricted FT (RFT) | `PP1RftLockBuilder` | `PP1RftUnlockBuilder` | Mint, Transfer, Split Transfer, Merge, Redeem, Burn |
-| Restricted NFT (RNFT) | `PP1RnftLockBuilder` | `PP1RnftUnlockBuilder` | Issuance, Transfer, Redeem, Burn |
-| State Machine (SM) | `PP1SmLockBuilder` | `PP1SmUnlockBuilder` | Create, Enroll, Confirm, Convert, Settle, Timeout, Burn |
-| Appendable Token (AT) | `PP1AtLockBuilder` | `PP1AtUnlockBuilder` | Issuance, Stamp, Transfer, Redeem, Burn |
-
-Each token transaction also uses **PP2** (witness) and **PP3/PartialWitness** (funding) scripts, plus an optional **Metadata** output.
-
-## TSL1 Terminology
-
-| Term | Description |
-|------|-------------|
-| **PP1 (Plugpoint 1)** | Primary token locking script containing the inductive proof logic. Encodes ownership, token identity, and archetype-specific parameters. |
-| **PP2 (Plugpoint 2)** | Witness locking script that "plugs into" the token transaction, anchoring it to a specific UTXO outpoint and handling witness change. |
-| **PP3 (Plugpoint 3) / Partial Witness** | Lightweight witness script that plugs into the witness funding input. |
-| **ownerPKH** | 20-byte HASH160 of the token owner's public key. |
-| **tokenId** | 32-byte unique token identifier, typically the genesis transaction ID. |
-| **rabinPubKeyHash** | 20-byte HASH160 of a Rabin signature public key, used for identity anchoring in NFTs and restricted tokens. |
-| **preImage** | Sighash preimage of the transaction, required by OP_PUSH_TX for self-referential script validation. |
-| **witnessPadding** | Padding bytes for the witness funding transaction to ensure correct script alignment. |
-| **tokenLHS** | Left-hand side of the serialized token output, used to verify output structure during transfers. |
-| **prevTokenTx** | Raw bytes of the previous token transaction, used for inductive proof verification. |
+A Java library for building complete Bitcoin token transactions per the [TSL1 (Twostack Layer 1) specification](https://github.com/twostack/tsl1). Provides high-level transaction assembly for six token archetypes — NFT, fungible, restricted, appendable, and state machine tokens — with full support for issuance, transfer, witness proofs, and burns.
 
 ## Installation
 
@@ -47,81 +19,240 @@ dependencies {
 
 ## Quick Start
 
-### Creating an NFT Locking Script
+### Issuing an NFT
 
 ```java
-byte[] ownerPKH = ...;       // 20-byte HASH160 of owner's public key
-byte[] tokenId = ...;         // 32-byte token identifier
-byte[] rabinPubKeyHash = ...; // 20-byte HASH160 of Rabin public key
+TokenTool tool = new TokenTool(NetworkAddressType.TEST_PKH);
 
-PP1NftLockBuilder lockBuilder = new PP1NftLockBuilder(ownerPKH, tokenId, rabinPubKeyHash);
-Script lockingScript = lockBuilder.getLockingScript();
-```
-
-### Creating a Fungible Token Locking Script
-
-```java
-byte[] ownerPKH = ...;  // 20-byte HASH160 of owner's public key
-byte[] tokenId = ...;    // 32-byte token identifier
-long amount = 1000;       // token amount (max 2^55 - 1)
-
-PP1FtLockBuilder lockBuilder = new PP1FtLockBuilder(ownerPKH, tokenId, amount);
-Script lockingScript = lockBuilder.getLockingScript();
-```
-
-### Unlocking an NFT for Transfer
-
-```java
-PP1NftUnlockBuilder unlockBuilder = PP1NftUnlockBuilder.forTransfer(
-    preImage, pp2Output, ownerPubKey,
-    changePKH, changeAmount,
-    tokenLHS, prevTokenTx, witnessPadding
+Transaction issuanceTx = tool.createTokenIssuanceTxn(
+        fundingTx,              // transaction providing satoshis
+        signer,                 // TransactionSigner for the funding input
+        recipientAddress,       // Address of the token recipient
+        witnessFundingTxId,     // 32-byte txid of the first witness funder
+        rabinPubKeyHash,        // 20-byte HASH160 of Rabin oracle key
+        metadataBytes           // optional OP_RETURN payload (or null)
 );
-
-// Add signature (required for transfer)
-unlockBuilder.addSignature(signature);
-
-Script unlockingScript = unlockBuilder.getUnlockingScript();
 ```
 
-### Parsing a PP1 Script
+### Creating a Witness Proof
+
+Every token action requires a corresponding witness transaction that proves
+the token owner authorised the state change.
 
 ```java
-Script lockingScript = ...; // any PP1* locking script
-
-Optional<PP1TokenScriptParser.TokenScriptInfo> info =
-    PP1TokenScriptParser.parse(lockingScript);
-
-info.ifPresent(i -> {
-    byte[] ownerPKH = i.ownerPKH();
-    byte[] tokenId = i.tokenId();
-});
+Transaction witnessTx = tool.createWitnessTxn(
+        signer, fundingTx, tokenTx,
+        parentTokenTxBytes, ownerPubkey, changePKH,
+        TokenAction.ISSUANCE,
+        rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey
+);
 ```
+
+### Transferring an NFT
+
+```java
+Transaction transferTx = tool.createTokenTransferTxn(
+        prevWitnessTx, prevTokenTx,
+        currentOwnerPubkey, recipientAddress,
+        fundingTx, fundingSigner,
+        recipientWitnessFundingTxId, tokenId, rabinPubKeyHash
+);
+```
+
+### Minting Fungible Tokens
+
+```java
+FungibleTokenTool ftTool = new FungibleTokenTool(NetworkAddressType.TEST_PKH);
+
+Transaction mintTx = ftTool.createFungibleMintTxn(
+        fundingTx, signer, recipientAddress,
+        witnessFundingTxId, 1_000_000L, metadataBytes
+);
+```
+
+### Splitting Fungible Tokens
+
+```java
+Transaction splitTx = ftTool.createFungibleSplitTxn(
+        prevWitnessTx, prevTokenTx,
+        currentOwnerPubkey, recipientAddress,
+        300_000L,                           // amount to send
+        fundingTx, fundingSigner,
+        recipientWitnessFundingTxId,
+        changeWitnessFundingTxId,
+        tokenId, 1_000_000L,                // total balance
+        1                                   // prevTripletBaseIndex
+);
+```
+
+## Token Archetypes
+
+Each archetype has a dedicated **Tool** class that assembles complete multi-output transactions:
+
+| Tool Class | Archetype | Operations |
+|---|---|---|
+| `TokenTool` | Non-Fungible Token (NFT) | issue, transfer, witness, burn |
+| `FungibleTokenTool` | Fungible Token (FT) | mint, transfer, split, merge, witness, burn |
+| `RestrictedTokenTool` | Restricted NFT (RNFT) | issue, transfer, witness, redeem, burn |
+| `RestrictedFungibleTokenTool` | Restricted FT (RFT) | mint, transfer, split, merge, witness, redeem, burn |
+| `AppendableTokenTool` | Appendable Token (AT) | issue, stamp, transfer, witness, redeem, burn |
+| `StateMachineTool` | State Machine (SM) | create, enroll, confirm, convert, settle, timeout, witness, dual-witness, burn |
+
+All Tool constructors take a `NetworkAddressType` and an optional `BigInteger` fee
+(defaults to 135 satoshis):
+
+```java
+TokenTool tool = new TokenTool(NetworkAddressType.TEST_PKH);
+TokenTool mainnet = new TokenTool(NetworkAddressType.MAIN_PKH, BigInteger.valueOf(200));
+```
+
+## Transaction Layouts
+
+TSL1 transactions follow a structured multi-output layout. The Tool classes
+handle all wiring automatically.
+
+### Standard 5-Output Layout
+
+Used by issuance, transfer, and most state transitions:
+
+```
+Output 0: Change        — P2PKH back to the signer
+Output 1: PP1 (token)   — Inductive proof locking script (1 satoshi)
+Output 2: PP2 (witness) — Outpoint-anchored witness bridge (1 satoshi)
+Output 3: PP3 (partial) — SHA256 partial witness verifier (1 satoshi)
+Output 4: Metadata      — OP_RETURN payload (0 satoshis)
+```
+
+### Split Layout (8 Outputs)
+
+Used by `createFungibleSplitTxn` and `createRftSplitTxn`:
+
+```
+Output 0:   Change
+Output 1–3: Recipient triplet (PP1_FT, PP2-FT, PP3-FT)
+Output 4–6: Sender change triplet (PP1_FT, PP2-FT, PP3-FT)
+Output 7:   Metadata
+```
+
+### Settle Layout (7 Outputs)
+
+Used by `StateMachineTool.createSettleTxn`:
+
+```
+Output 0: Change
+Output 1: Customer reward (P2PKH)
+Output 2: Merchant payment (P2PKH)
+Output 3–5: PP1_SM, PP2, PP3
+Output 6: Metadata
+```
+
+### Timeout Layout (6 Outputs)
+
+Used by `StateMachineTool.createTimeoutTxn` (with `nLockTime`):
+
+```
+Output 0: Change
+Output 1: Merchant refund (P2PKH)
+Output 2–4: PP1_SM, PP2, PP3
+Output 5: Metadata
+```
+
+### Witness Layout (1 Output)
+
+Used by all `createWitnessTxn` methods:
+
+```
+Output 0: ModP2PKH locked to current token owner (1 satoshi)
+```
+
+## Witness Proof Lifecycle
+
+Every token operation follows a two-transaction pattern:
+
+1. **Token Transaction** — Creates or updates the token outputs (5+ outputs).
+2. **Witness Transaction** — Proves ownership by spending PP1 + PP2 from the token
+   transaction and producing a single witness output.
+
+The witness transaction uses a **two-pass build**: the first pass computes the
+sighash preimage, and the second pass recalculates SHA256 block-alignment padding
+to ensure the partial hash proof is valid.
+
+```
+           ┌──────────────────┐     ┌──────────────────┐
+           │  Token Tx        │     │  Witness Tx       │
+           │                  │     │                   │
+Funding ──►│  PP1 (token)  ──────►──│  PP1 (unlock)     │
+           │  PP2 (witness)──────►──│  PP2 (unlock)     │
+           │  PP3 (partial)   │     │                   │
+           │  Metadata        │     │  Witness output   │
+           │  Change          │     └──────────────────┘
+           └──────────────────┘
+```
+
+Transfers then spend the witness output + PP3 from the token transaction to
+produce the next token transaction in the chain.
+
+## TSL1 Terminology
+
+| Term | Description |
+|------|-------------|
+| **PP1 (Plugpoint 1)** | Primary token locking script containing the inductive proof logic. Encodes ownership, token identity, and archetype-specific parameters. |
+| **PP2 (Plugpoint 2)** | Witness locking script that "plugs into" the token transaction, anchoring it to a specific UTXO outpoint. |
+| **PP3 (Plugpoint 3)** | Lightweight partial witness script used for witness funding inputs. |
+| **ownerPKH** | 20-byte HASH160 of the token owner's public key. |
+| **tokenId** | 32-byte unique token identifier — the genesis transaction ID. |
+| **preImage** | Sighash preimage of the transaction, required by OP_PUSH_TX for self-referential script validation. |
+| **witnessPadding** | Padding bytes that align the witness transaction to SHA256 block boundaries. |
+| **tokenLHS** | Left-hand side of the serialized token transaction (version + inputs), used for output structure verification. |
 
 ## Architecture
 
-The library uses a three-layer script architecture:
+The library has three layers:
 
-1. **PP1 (Token Logic)** — Contains the full inductive proof script. Validates token integrity, ownership signatures, and output structure. Each archetype has its own PP1 script.
-2. **PP2 (Witness)** — Anchors the token transaction to a specific UTXO outpoint. Handles witness change for transaction fees.
-3. **PP3 / Partial Witness (Funding)** — Modified P2PKH script for the witness funding input.
-4. **Metadata** — Optional OP_FALSE OP_RETURN output for off-chain metadata.
+### Tool Layer (developer-facing)
 
-Lock scripts are generated via **template substitution** — JSON templates at `src/main/resources/templates/` contain hex script patterns with `{{placeholder}}` markers that are replaced with encoded parameter values.
+The `transaction` package provides the six Tool classes that developers use
+directly. Each Tool assembles complete transactions by composing the lower
+layers:
 
-Unlock scripts are built via **action-specific factory methods** (e.g., `forMint()`, `forTransfer()`) that push data items onto the stack in the exact order expected by the corresponding lock script.
+- Transaction output wiring (correct indices, satoshi amounts)
+- Sighash preimage computation
+- Two-pass witness padding calculation
+- Metadata forwarding across transfers
+- Balance conservation (splits/merges)
 
-See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
+### Script Layer (internal)
+
+The `lock` and `unlock` packages contain the individual script builders.
+These are used internally by the Tool classes but can also be used directly
+for advanced or custom transaction assembly:
+
+- **Lock builders** load JSON templates and substitute parameters
+- **Unlock builders** use static factory methods (`forMint()`, `forTransfer()`, etc.)
+
+### Encoding Layer (internal)
+
+The `encoding` package provides Bitcoin-specific value encoding:
+
+- `AmountEncoder` — 7-byte LE encoding for FT amounts
+- `PushdataEncoder` — Bitcoin pushdata framing
+- `ScriptNumberEncoder` — Bitcoin script number encoding
+
+See [docs/architecture.md](docs/architecture.md) for detailed internals.
 
 ## Cross-Language Compatibility
 
-Script outputs are validated byte-identical against the canonical Dart implementation via `CrossLanguageVectorTest`. Test vectors are loaded from `src/test/resources/cross_language_vectors.json`.
+Script outputs are validated byte-identical against the canonical Dart
+implementation via `CrossLanguageVectorTest`. Test vectors are loaded from
+`src/test/resources/cross_language_vectors.json`.
 
 ## Building from Source
 
 ```bash
 # Requires bitcoin4j 1.7.0 in mavenLocal
-./gradlew build
+./gradlew build        # compile + test
+./gradlew test         # tests only
+./gradlew javadoc      # generate Javadoc
 ```
 
 Java 17 or later is required.
