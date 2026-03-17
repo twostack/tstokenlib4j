@@ -24,9 +24,12 @@ dependencies {
 ```java
 TokenTool tool = new TokenTool(NetworkAddressType.TEST_PKH);
 
+SigningCallback signingCallback = sighash -> privateKey.sign(sighash);
+
 Transaction issuanceTx = tool.createTokenIssuanceTxn(
         fundingTx,              // transaction providing satoshis
-        signer,                 // TransactionSigner for the funding input
+        signingCallback,        // signs sighash digests externally
+        publicKey,              // public key for the funding input
         recipientAddress,       // Address of the token recipient
         witnessFundingTxId,     // 32-byte txid of the first witness funder
         rabinPubKeyHash,        // 20-byte HASH160 of Rabin oracle key
@@ -41,7 +44,7 @@ the token owner authorised the state change.
 
 ```java
 Transaction witnessTx = tool.createWitnessTxn(
-        signer, fundingTx, tokenTx,
+        signingCallback, publicKey, fundingTx, tokenTx,
         parentTokenTxBytes, ownerPubkey, changePKH,
         TokenAction.ISSUANCE,
         rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey
@@ -54,7 +57,7 @@ Transaction witnessTx = tool.createWitnessTxn(
 Transaction transferTx = tool.createTokenTransferTxn(
         prevWitnessTx, prevTokenTx,
         currentOwnerPubkey, recipientAddress,
-        fundingTx, fundingSigner,
+        fundingTx, signingCallback, publicKey,
         recipientWitnessFundingTxId, tokenId, rabinPubKeyHash
 );
 ```
@@ -64,8 +67,10 @@ Transaction transferTx = tool.createTokenTransferTxn(
 ```java
 FungibleTokenTool ftTool = new FungibleTokenTool(NetworkAddressType.TEST_PKH);
 
+SigningCallback signingCallback = sighash -> privateKey.sign(sighash);
+
 Transaction mintTx = ftTool.createFungibleMintTxn(
-        fundingTx, signer, recipientAddress,
+        fundingTx, signingCallback, publicKey, recipientAddress,
         witnessFundingTxId, 1_000_000L, metadataBytes
 );
 ```
@@ -77,13 +82,61 @@ Transaction splitTx = ftTool.createFungibleSplitTxn(
         prevWitnessTx, prevTokenTx,
         currentOwnerPubkey, recipientAddress,
         300_000L,                           // amount to send
-        fundingTx, fundingSigner,
+        fundingTx, signingCallback, publicKey,
         recipientWitnessFundingTxId,
         changeWitnessFundingTxId,
         tokenId, 1_000_000L,                // total balance
         1                                   // prevTripletBaseIndex
 );
 ```
+
+## Signing
+
+All Tool methods accept a `SigningCallback` and `PublicKey` instead of a bitcoin4j `TransactionSigner`. This decouples transaction building from private key management.
+
+`SigningCallback` is a `@FunctionalInterface` with a single method:
+
+```java
+@FunctionalInterface
+public interface SigningCallback {
+    byte[] sign(byte[] sighash);
+}
+```
+
+The callback receives a 32-byte sighash digest and returns a DER-encoded ECDSA signature. This makes it compatible with any signing backend:
+
+```java
+// Local key:
+SigningCallback signer = sighash -> privateKey.sign(sighash);
+
+// KMS or HSM:
+SigningCallback signer = sighash -> kms.sign(merchantId, sighash);
+
+// libspiffy4j's CallbackTransactionSigner:
+CallbackTransactionSigner spiffySigner = ...;
+SigningCallback signer = sighash -> spiffySigner.sign(sighash, 0);
+```
+
+Internally, `SignerAdapter.fromCallback(callback, publicKey)` bridges a `SigningCallback` to bitcoin4j's `TransactionSigner` so the underlying `TransactionBuilder` workflow is unchanged. Application code never needs to call `SignerAdapter` directly — the Tool classes handle the adaptation.
+
+## Plugin Integration
+
+tstokenlib4j provides a plugin for [libspiffy4j](https://github.com/AgenticGroup/libspiffy4j)'s wallet plugin system. The plugin delegates to the existing parser (`PP1TemplateRegistrar`) for script identification and to Tool classes for transaction building.
+
+libspiffy4j is a `compileOnly` dependency — the host application provides it at runtime. To register the plugin:
+
+```java
+var plugin = new Tsl1TransactionBuilderPlugin(NetworkAddressType.MAIN_PKH);
+pluginRegistry.register(plugin);
+```
+
+`Tsl1TransactionBuilderPlugin` implements both `ScriptPlugin` and `TransactionBuilderPlugin`, supporting all six token archetypes with:
+
+- `identifyScript()` — Matches output scripts against PP1 templates to detect token type
+- `extractMetadata()` — Extracts ownerAddress, tokenId, amount, and other fields for UTXO enrichment
+- `createLockingScript()` — Builds PP1 locking scripts for new token outputs
+- `buildTransaction()` — Delegates to the appropriate Tool class for complete transaction assembly
+- `validateTransactionStructure()` — Checks output counts and layout per action type
 
 ## Token Archetypes
 
@@ -207,7 +260,14 @@ produce the next token transaction in the chain.
 
 ## Architecture
 
-The library has three layers:
+The library has four layers:
+
+### Plugin Layer (libspiffy4j integration)
+
+The `plugin` package bridges tstokenlib4j to libspiffy4j's wallet plugin system:
+
+- `Tsl1TransactionBuilderPlugin` — Implements `ScriptPlugin` + `TransactionBuilderPlugin` for all six archetypes
+- `ScriptInfoMetadataMapper` — Converts `ScriptInfo` into metadata maps for UTXO enrichment
 
 ### Tool Layer (developer-facing)
 
@@ -255,7 +315,7 @@ implementation via `CrossLanguageVectorTest`. Test vectors are loaded from
 ./gradlew javadoc      # generate Javadoc
 ```
 
-Java 17 or later is required.
+Java 21 or later is required.
 
 ## License
 
