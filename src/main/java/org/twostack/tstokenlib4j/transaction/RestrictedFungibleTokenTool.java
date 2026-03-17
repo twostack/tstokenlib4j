@@ -29,6 +29,11 @@ import java.security.NoSuchAlgorithmException;
  * <p>Encapsulates the construction of multi-output token transactions that conform
  * to the TSL1 protocol's proof-carrying transaction structure with restricted
  * transfer policy enforcement via the flags byte in the PP1_RFT locking script.
+ *
+ * <p>All signing is performed via {@link SigningCallback}, which decouples
+ * transaction construction from private key management. The callback receives
+ * a sighash digest and returns a DER-encoded signature — compatible with
+ * KMS, HSM, hardware wallets, or libspiffy4j's {@code CallbackTransactionSigner}.
  */
 public class RestrictedFungibleTokenTool {
 
@@ -67,7 +72,8 @@ public class RestrictedFungibleTokenTool {
      * <p>Outputs: [Change, PP1_RFT, PP2-FT, PP3-FT, Metadata]
      *
      * @param tokenFundingTx     funds the mint; its txid becomes the tokenId
-     * @param fundingTxSigner    signer for the funding input
+     * @param fundingSigner      callback that signs sighash digests for the funding key
+     * @param fundingPubKey      public key corresponding to the funding signer
      * @param recipientAddress   address of the token recipient
      * @param witnessFundingTxId txid of the transaction funding the first witness
      * @param rabinPubKeyHash    20-byte HASH160 of the Rabin public key
@@ -78,7 +84,8 @@ public class RestrictedFungibleTokenTool {
      */
     public Transaction createFungibleMintTxn(
             Transaction tokenFundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
             byte[] rabinPubKeyHash,
@@ -86,6 +93,8 @@ public class RestrictedFungibleTokenTool {
             long amount,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
@@ -118,14 +127,25 @@ public class RestrictedFungibleTokenTool {
      *
      * <p>Spends PP1_RFT (output[1]), PP2-FT (output[2]), and PP3-FT (output[3])
      * from the token transaction. Change is sent back to the owner.
+     *
+     * @param tokenTx          the token transaction to burn
+     * @param ownerCallback    callback that signs sighash digests for the owner key
+     * @param ownerPubkey      the owner's public key
+     * @param fundingTx        the funding transaction
+     * @param fundingCallback  callback that signs sighash digests for the funding key
+     * @param fundingPubKey    public key corresponding to the funding signer
      */
     public Transaction createBurnTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner)
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
@@ -144,14 +164,25 @@ public class RestrictedFungibleTokenTool {
      *
      * <p>Spends PP1_RFT (output[1]), PP2-FT (output[2]), and PP3-FT (output[3])
      * from the token transaction. Change is sent back to the owner.
+     *
+     * @param tokenTx          the token transaction to redeem
+     * @param ownerCallback    callback that signs sighash digests for the owner key
+     * @param ownerPubkey      the owner's public key
+     * @param fundingTx        the funding transaction
+     * @param fundingCallback  callback that signs sighash digests for the funding key
+     * @param fundingPubKey    public key corresponding to the funding signer
      */
     public Transaction createRedeemTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner)
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
@@ -174,7 +205,8 @@ public class RestrictedFungibleTokenTool {
      * <p>For MINT: {@code rabinKeyPair}, {@code identityTxId}, {@code ed25519PubKey} are required.
      * For TRANSFER: {@code parentTokenTxBytes} and {@code parentOutputCount} are required.
      *
-     * @param fundingSigner        signer for the funding input
+     * @param fundingSigner        callback that signs sighash digests for the funding key
+     * @param fundingPubKey        public key corresponding to the funding signer
      * @param fundingTx            the funding transaction
      * @param tokenTx              the token transaction being witnessed
      * @param ownerPubkey          public key of the current token owner
@@ -196,7 +228,8 @@ public class RestrictedFungibleTokenTool {
      * @return the witness transaction
      */
     public Transaction createRftWitnessTxn(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             PublicKey ownerPubkey,
@@ -217,6 +250,8 @@ public class RestrictedFungibleTokenTool {
             byte[] recipientPKH)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+
         int pp1FtIndex = tripletBaseIndex;
         int pp2Index = tripletBaseIndex + 1;
 
@@ -227,8 +262,8 @@ public class RestrictedFungibleTokenTool {
 
         // First pass: build with empty PP1_RFT unlocker to get preimage
         Transaction preImageTxn = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, pp1FtIndex, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, pp1FtIndex, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, pp2Index, TransactionInput.MAX_SEQ_NUMBER, pp2FtUnlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -249,7 +284,7 @@ public class RestrictedFungibleTokenTool {
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH);
 
-        Transaction witnessTx = buildWitnessTxn(fundingSigner, fundingTx, tokenTx,
+        Transaction witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1RftUnlocker, pp2FtUnlocker, witnessLocker);
 
         // Recalculate padding
@@ -263,7 +298,7 @@ public class RestrictedFungibleTokenTool {
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH);
 
-        witnessTx = buildWitnessTxn(fundingSigner, fundingTx, tokenTx,
+        witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1RftUnlocker, pp2FtUnlocker, witnessLocker);
 
         return witnessTx;
@@ -282,7 +317,8 @@ public class RestrictedFungibleTokenTool {
      * @param currentOwnerPubkey         public key of the current token owner
      * @param recipientAddress           address of the token recipient
      * @param fundingTx                  the funding transaction
-     * @param fundingTxSigner            signer for the funding input
+     * @param fundingSigner              callback that signs sighash digests for the funding key
+     * @param fundingPubKey              public key corresponding to the funding signer
      * @param recipientWitnessFundingTxId txid of the transaction funding the recipient's witness
      * @param tokenId                    32-byte token identifier
      * @param rabinPubKeyHash            20-byte HASH160 of the Rabin public key
@@ -297,7 +333,8 @@ public class RestrictedFungibleTokenTool {
             PublicKey currentOwnerPubkey,
             Address recipientAddress,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] tokenId,
             byte[] rabinPubKeyHash,
@@ -305,6 +342,8 @@ public class RestrictedFungibleTokenTool {
             long amount,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -372,7 +411,8 @@ public class RestrictedFungibleTokenTool {
      * @param recipientAddress            address of the token recipient
      * @param sendAmount                  token amount being sent to the recipient
      * @param fundingTx                   the funding transaction
-     * @param fundingTxSigner             signer for the funding input
+     * @param fundingSigner               callback that signs sighash digests for the funding key
+     * @param fundingPubKey               public key corresponding to the funding signer
      * @param recipientWitnessFundingTxId txid of the transaction funding the recipient's witness
      * @param changeWitnessFundingTxId    txid of the transaction funding the sender's change witness
      * @param tokenId                     32-byte token identifier
@@ -389,7 +429,8 @@ public class RestrictedFungibleTokenTool {
             Address recipientAddress,
             long sendAmount,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] changeWitnessFundingTxId,
             byte[] tokenId,
@@ -398,6 +439,8 @@ public class RestrictedFungibleTokenTool {
             long totalAmount,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -478,9 +521,10 @@ public class RestrictedFungibleTokenTool {
      * @param prevWitnessTxB          the second previous witness transaction
      * @param prevTokenTxB            the second previous token transaction
      * @param currentOwnerPubkey      public key of the current token owner
-     * @param ownerSigner             signer for the owner's inputs
+     * @param ownerCallback           callback that signs sighash digests for the owner key
      * @param fundingTx               the funding transaction
-     * @param fundingTxSigner         signer for the funding input
+     * @param fundingCallback         callback that signs sighash digests for the funding key
+     * @param fundingPubKey           public key corresponding to the funding signer
      * @param mergedWitnessFundingTxId txid of the transaction funding the merged witness
      * @param tokenId                 32-byte token identifier
      * @param rabinPubKeyHash         20-byte HASH160 of the Rabin public key
@@ -496,9 +540,10 @@ public class RestrictedFungibleTokenTool {
             Transaction prevWitnessTxB,
             Transaction prevTokenTxB,
             PublicKey currentOwnerPubkey,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey,
             byte[] mergedWitnessFundingTxId,
             byte[] tokenId,
             byte[] rabinPubKeyHash,
@@ -507,6 +552,9 @@ public class RestrictedFungibleTokenTool {
             int prevTripletBaseIndexA,
             int prevTripletBaseIndexB)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, currentOwnerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] ownerPKH = currentOwnerAddress.getHash();

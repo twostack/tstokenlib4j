@@ -28,6 +28,11 @@ import java.security.NoSuchAlgorithmException;
  * Dual authority model: merchant signs enroll/settle/timeout; both merchant and customer
  * sign confirm/convert. Owner (whoever is the next expected actor) signs burn.
  *
+ * <p>All signing is performed via {@link SigningCallback}, which decouples
+ * transaction construction from private key management. The callback receives
+ * a sighash digest and returns a DER-encoded signature — compatible with
+ * KMS, HSM, hardware wallets, or libspiffy4j's {@code CallbackTransactionSigner}.
+ *
  * <p>Transaction output structures:
  * <ul>
  *   <li>Issuance/Enroll/Transition: 5 outputs [Change, PP1_SM, PP2, PP3, Metadata]</li>
@@ -73,7 +78,8 @@ public class StateMachineTool {
      * Change, PP1_SM, PP2, PartialWitness, Metadata.
      *
      * @param tokenFundingTx      funds the issuance; its txid becomes the initial tokenId
-     * @param fundingTxSigner     signer for the funding input
+     * @param fundingSigner       callback that signs sighash digests for the funding key
+     * @param fundingPubKey       public key corresponding to the funding signer
      * @param merchantAddress     the initial owner address (merchant creates the funnel)
      * @param merchantPKH         20-byte HASH160 of the merchant's public key
      * @param customerPKH         20-byte HASH160 of the customer's public key
@@ -84,7 +90,8 @@ public class StateMachineTool {
      */
     public Transaction createTokenIssuanceTxn(
             Transaction tokenFundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Address merchantAddress,
             byte[] merchantPKH,
             byte[] customerPKH,
@@ -93,6 +100,8 @@ public class StateMachineTool {
             byte[] witnessFundingTxId,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
@@ -130,7 +139,8 @@ public class StateMachineTool {
      *
      * <p>Uses two-pass building with padding recalculation.
      *
-     * @param signer              signer for funding and token inputs (merchant)
+     * @param signerCallback      callback that signs sighash digests for the merchant key
+     * @param signerPubKey        public key corresponding to the merchant signer
      * @param fundingTx           funding transaction
      * @param tokenTx             the token transaction being witnessed
      * @param parentTokenTxBytes  raw bytes of the parent token transaction
@@ -146,7 +156,8 @@ public class StateMachineTool {
      * @param pp2OutputIndex      index of PP2 output in tokenTx (default 2)
      */
     public Transaction createWitnessTxn(
-            TransactionSigner signer,
+            SigningCallback signerCallback,
+            PublicKey signerPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -161,6 +172,8 @@ public class StateMachineTool {
             int pp1OutputIndex,
             int pp2OutputIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner signer = SignerAdapter.fromCallback(signerCallback, signerPubKey, sigHashAll);
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
@@ -238,7 +251,8 @@ public class StateMachineTool {
      *
      * <p>Two-pass: builds tx to compute sighash, signs with both keys, rebuilds.
      *
-     * @param merchantSigner      signer for the merchant
+     * @param merchantCallback    callback that signs sighash digests for the merchant key
+     * @param merchantPubKeyForSigning public key corresponding to the merchant signer
      * @param customerPrivateKey  customer's private key for dual-signature
      * @param fundingTx           funding transaction
      * @param tokenTx             the token transaction being witnessed
@@ -250,7 +264,8 @@ public class StateMachineTool {
      * @param eventData           event data bytes for state machine transitions
      */
     public Transaction createDualWitnessTxn(
-            TransactionSigner merchantSigner,
+            SigningCallback merchantCallback,
+            PublicKey merchantPubKeyForSigning,
             PrivateKey customerPrivateKey,
             Transaction fundingTx,
             Transaction tokenTx,
@@ -261,6 +276,8 @@ public class StateMachineTool {
             StateMachineAction action,
             byte[] eventData)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner merchantSigner = SignerAdapter.fromCallback(merchantCallback, merchantPubKeyForSigning, sigHashAll);
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
@@ -334,7 +351,8 @@ public class StateMachineTool {
      * @param prevTokenTx         the previous token transaction
      * @param merchantPubkey      merchant's public key
      * @param fundingTx           funding transaction
-     * @param fundingTxSigner     signer for the funding input
+     * @param fundingSigner       callback that signs sighash digests for the funding key
+     * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
      * @param eventData           enrollment event data
      * @param tokenId             the token identifier (32 bytes)
@@ -351,7 +369,8 @@ public class StateMachineTool {
             Transaction prevTokenTx,
             PublicKey merchantPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
             byte[] eventData,
             byte[] tokenId,
@@ -363,6 +382,8 @@ public class StateMachineTool {
             int transitionBitmask,
             int timeoutDelta)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address merchantAddress = Address.fromKey(networkAddressType, merchantPubkey);
 
@@ -441,7 +462,8 @@ public class StateMachineTool {
      * @param prevTokenTx         the previous token transaction
      * @param signerPubkey        public key of the signer (current actor)
      * @param fundingTx           funding transaction
-     * @param fundingTxSigner     signer for the funding input
+     * @param fundingSigner       callback that signs sighash digests for the funding key
+     * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
      * @param newState            the post-transition state value
      * @param newOwnerPKH         20-byte PKH for the next expected actor
@@ -461,7 +483,8 @@ public class StateMachineTool {
             Transaction prevTokenTx,
             PublicKey signerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
             int newState,
             byte[] newOwnerPKH,
@@ -476,6 +499,8 @@ public class StateMachineTool {
             int transitionBitmask,
             int timeoutDelta)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address signerAddress = Address.fromKey(networkAddressType, signerPubkey);
         Address newOwnerAddress = LegacyAddress.fromPubKeyHash(networkAddressType, newOwnerPKH);
@@ -559,7 +584,8 @@ public class StateMachineTool {
      * @param prevTokenTx         the previous token transaction
      * @param signerPubkey        public key of the signer
      * @param fundingTx           funding transaction
-     * @param fundingTxSigner     signer for the funding input
+     * @param fundingSigner       callback that signs sighash digests for the funding key
+     * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
      * @param custRewardAmount    satoshi amount rewarded to the customer
      * @param merchPayAmount      satoshi amount paid to the merchant
@@ -578,7 +604,8 @@ public class StateMachineTool {
             Transaction prevTokenTx,
             PublicKey signerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
             BigInteger custRewardAmount,
             BigInteger merchPayAmount,
@@ -592,6 +619,8 @@ public class StateMachineTool {
             int transitionBitmask,
             int timeoutDelta)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address signerAddress = Address.fromKey(networkAddressType, signerPubkey);
 
@@ -685,7 +714,8 @@ public class StateMachineTool {
      * @param prevTokenTx         the previous token transaction
      * @param signerPubkey        public key of the signer
      * @param fundingTx           funding transaction
-     * @param fundingTxSigner     signer for the funding input
+     * @param fundingSigner       callback that signs sighash digests for the funding key
+     * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
      * @param refundAmount        satoshi amount to refund to the merchant
      * @param nLockTime           block height for nLockTime enforcement
@@ -703,7 +733,8 @@ public class StateMachineTool {
             Transaction prevTokenTx,
             PublicKey signerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
             BigInteger refundAmount,
             int nLockTime,
@@ -716,6 +747,8 @@ public class StateMachineTool {
             int transitionBitmask,
             int timeoutDelta)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address signerAddress = Address.fromKey(networkAddressType, signerPubkey);
 
@@ -795,24 +828,29 @@ public class StateMachineTool {
      * <p>Owner signs. Spends PP1_SM, PP2, and PartialWitness outputs.
      *
      * @param tokenTx          the token transaction to burn
-     * @param ownerSigner      signer for the owner
+     * @param ownerCallback    callback that signs sighash digests for the owner key
      * @param ownerPubkey      owner's public key
      * @param fundingTx        funding transaction
-     * @param fundingTxSigner  signer for the funding input
+     * @param fundingCallback  callback that signs sighash digests for the funding key
+     * @param fundingPubKey    public key corresponding to the funding signer
      * @param pp1OutputIndex   index of PP1 output in tokenTx (default 1)
      * @param pp2OutputIndex   index of PP2 output in tokenTx (default 2)
      * @param pp3OutputIndex   index of PP3 output in tokenTx (default 3)
      */
     public Transaction createBurnTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey,
             int pp1OutputIndex,
             int pp2OutputIndex,
             int pp3OutputIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();

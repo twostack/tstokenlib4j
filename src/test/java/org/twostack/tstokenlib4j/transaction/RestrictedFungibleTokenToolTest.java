@@ -10,7 +10,6 @@ import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
@@ -105,12 +104,12 @@ public class RestrictedFungibleTokenToolTest {
         return Transaction.fromHex(ALICE_FUNDING_TX_HEX);
     }
 
-    private TransactionSigner bobSigner() {
-        return new TransactionSigner(sigHashAll, bobPrivateKey);
+    private SigningCallback bobSigningCallback() {
+        return sighash -> bobPrivateKey.sign(sighash);
     }
 
-    private TransactionSigner aliceSigner() {
-        return new TransactionSigner(sigHashAll, alicePrivateKey);
+    private SigningCallback aliceSigningCallback() {
+        return sighash -> alicePrivateKey.sign(sighash);
     }
 
     // -------------------------------------------------------------------------
@@ -123,7 +122,8 @@ public class RestrictedFungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -157,7 +157,8 @@ public class RestrictedFungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -186,7 +187,8 @@ public class RestrictedFungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -195,7 +197,8 @@ public class RestrictedFungibleTokenToolTest {
                 null);
 
         Transaction witnessTx = tool.createRftWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobFundingTx,
                 mintTx,
                 bobPub,
@@ -231,7 +234,8 @@ public class RestrictedFungibleTokenToolTest {
         // Step 1: Mint
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -241,7 +245,8 @@ public class RestrictedFungibleTokenToolTest {
 
         // Step 2: Witness for mint
         Transaction mintWitnessTx = tool.createRftWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobFundingTx,
                 mintTx,
                 bobPub,
@@ -261,7 +266,8 @@ public class RestrictedFungibleTokenToolTest {
                 bobPub,
                 aliceAddress,
                 transferFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash,
@@ -283,7 +289,8 @@ public class RestrictedFungibleTokenToolTest {
         // Mint
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -296,10 +303,11 @@ public class RestrictedFungibleTokenToolTest {
 
         Transaction burnTx = tool.createBurnTokenTxn(
                 mintTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 burnFundingTx,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         assertEquals("Burn should produce 1 output", 1, burnTx.getOutputs().size());
         assertEquals("Burn should have 4 inputs (funding + PP1 + PP2 + PP3)",
@@ -317,7 +325,8 @@ public class RestrictedFungibleTokenToolTest {
         // Mint
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -330,10 +339,11 @@ public class RestrictedFungibleTokenToolTest {
 
         Transaction redeemTx = tool.createRedeemTokenTxn(
                 mintTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 redeemFundingTx,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         assertEquals("Redeem should produce 1 output", 1, redeemTx.getOutputs().size());
         assertEquals("Redeem should have 4 inputs (funding + PP1 + PP2 + PP3)",
@@ -352,7 +362,8 @@ public class RestrictedFungibleTokenToolTest {
         // Mint 1000 tokens
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -362,7 +373,8 @@ public class RestrictedFungibleTokenToolTest {
 
         // Mint witness
         Transaction mintWitnessTx = tool.createRftWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobFundingTx,
                 mintTx,
                 bobPub,
@@ -384,7 +396,8 @@ public class RestrictedFungibleTokenToolTest {
                 aliceAddress,
                 300,
                 splitFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx.getTransactionIdBytes(),
                 changeFundingTx.getTransactionIdBytes(),
                 tokenId,

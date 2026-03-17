@@ -2,7 +2,6 @@ package org.twostack.tstokenlib4j.transaction;
 
 import org.twostack.bitcoin4j.Address;
 import org.twostack.bitcoin4j.PublicKey;
-import org.twostack.bitcoin4j.address.LegacyAddress;
 import org.twostack.bitcoin4j.exception.SigHashException;
 import org.twostack.bitcoin4j.exception.SignatureDecodeException;
 import org.twostack.bitcoin4j.exception.TransactionException;
@@ -23,6 +22,11 @@ import java.nio.ByteOrder;
  *
  * <p>Encapsulates the construction of multi-output token transactions that conform
  * to the TSL1 protocol's proof-carrying transaction structure.
+ *
+ * <p>All signing is performed via {@link SigningCallback}, which decouples
+ * transaction construction from private key management. The callback receives
+ * a sighash digest and returns a DER-encoded signature — compatible with
+ * KMS, HSM, hardware wallets, or libspiffy4j's {@code CallbackTransactionSigner}.
  */
 public class TokenTool {
 
@@ -60,9 +64,25 @@ public class TokenTool {
      *
      * <p>Produces a 1-output transaction: Witness (locked to current token holder).
      * Uses two-pass building with padding recalculation.
+     *
+     * @param fundingSigner    callback that signs sighash digests for the funding key
+     * @param fundingPubKey    public key corresponding to the funding signer
+     * @param fundingTx        the funding transaction providing satoshis
+     * @param tokenTx          the token transaction being witnessed
+     * @param parentTokenTxBytes raw bytes of the parent token transaction
+     * @param ownerPubkey      the token owner's public key
+     * @param tokenChangePKH   PKH for token change output
+     * @param action           ISSUANCE or TRANSFER
+     * @param rabinN           Rabin public key N (for issuance identity)
+     * @param rabinS           Rabin signature S (for issuance identity)
+     * @param rabinPadding     Rabin signature padding
+     * @param identityTxId     identity anchor transaction ID
+     * @param ed25519PubKey    Ed25519 public key for identity
+     * @return the witness transaction
      */
     public Transaction createWitnessTxn(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -76,6 +96,8 @@ public class TokenTool {
             byte[] ed25519PubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(ownerPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
@@ -83,8 +105,8 @@ public class TokenTool {
 
         // First pass: build with empty PP1 unlocker to get preimage
         Transaction preImageTxn = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -105,8 +127,8 @@ public class TokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -121,8 +143,8 @@ public class TokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -133,22 +155,34 @@ public class TokenTool {
     /**
      * Creates a token issuance transaction with 5-output structure:
      * Change, PP1, PP2, PartialWitness, Metadata.
+     *
+     * @param tokenFundingTx     the funding transaction
+     * @param fundingSigner      callback that signs sighash digests
+     * @param fundingPubKey      public key corresponding to the funding signer
+     * @param recipientAddress   the token recipient's address
+     * @param witnessFundingTxId transaction ID for the witness funding outpoint
+     * @param rabinPubKeyHash    HASH160 of the issuer's Rabin public key N
+     * @param metadataBytes      metadata payload for the OP_RETURN output
+     * @return the issuance transaction (5 outputs)
      */
     public Transaction createTokenIssuanceTxn(
             Transaction tokenFundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
             byte[] rabinPubKeyHash,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
         byte[] tokenId = tokenFundingTx.getTransactionIdBytes();
         byte[] recipientPKH = recipientAddress.getHash();
 
-        tokenTxBuilder.spendFromTransaction(fundingTxSigner, tokenFundingTx, 1,
+        tokenTxBuilder.spendFromTransaction(signer, tokenFundingTx, 1,
                 TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker);
         tokenTxBuilder.withFeePerKb(1);
 
@@ -173,6 +207,18 @@ public class TokenTool {
      * Change, PP1, PP2, PartialWitness, Metadata.
      *
      * <p>Metadata is carried forward from the parent token transaction.
+     *
+     * @param prevWitnessTx              the previous witness transaction
+     * @param prevTokenTx                the previous token transaction
+     * @param currentOwnerPubkey         the current owner's public key (signs witness input)
+     * @param recipientAddress           the new owner's address
+     * @param fundingTx                  the funding transaction
+     * @param fundingSigner              callback that signs sighash digests for the funding key
+     * @param fundingPubKey              public key corresponding to the funding signer
+     * @param recipientWitnessFundingTxId txid for the recipient's witness funding outpoint
+     * @param tokenId                    the token identifier (32 bytes)
+     * @param rabinPubKeyHash            HASH160 of the issuer's Rabin public key N
+     * @return the transfer transaction (5 outputs)
      */
     public Transaction createTokenTransferTxn(
             Transaction prevWitnessTx,
@@ -180,11 +226,14 @@ public class TokenTool {
             PublicKey currentOwnerPubkey,
             Address recipientAddress,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] tokenId,
             byte[] rabinPubKeyHash)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -202,8 +251,8 @@ public class TokenTool {
 
         // First pass: empty PP3 unlocker to get preimage
         Transaction childPreImageTxn = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
@@ -223,8 +272,8 @@ public class TokenTool {
 
         // Final build with PP3 unlocker
         return new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
@@ -236,23 +285,35 @@ public class TokenTool {
 
     /**
      * Creates a burn transaction that destroys a token by spending all its proof outputs.
+     *
+     * @param tokenTx         the token transaction to burn
+     * @param ownerSigner     callback that signs for the token owner
+     * @param ownerPubkey     the token owner's public key
+     * @param fundingTx       the funding transaction
+     * @param fundingSigner   callback that signs for the funding key
+     * @param fundingPubKey   public key corresponding to the funding signer
+     * @return the burn transaction
      */
     public Transaction createBurnTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerSigner,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner)
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingSgn = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+        TransactionSigner ownerSgn = SignerAdapter.fromCallback(ownerSigner, ownerPubkey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
 
         return new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(ownerSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1NftUnlockBuilder.forBurn(ownerPubkey))
-                .spendFromTransaction(ownerSigner, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
-                .spendFromTransaction(ownerSigner, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
+                .spendFromTransaction(fundingSgn, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(ownerSgn, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1NftUnlockBuilder.forBurn(ownerPubkey))
+                .spendFromTransaction(ownerSgn, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
+                .spendFromTransaction(ownerSgn, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
                 .sendChangeTo(ownerAddress)
                 .build(false);
     }

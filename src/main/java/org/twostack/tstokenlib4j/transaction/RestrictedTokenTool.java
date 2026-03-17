@@ -24,6 +24,11 @@ import java.nio.ByteOrder;
  * <p>Encapsulates the construction of multi-output token transactions that conform
  * to the TSL1 protocol's proof-carrying transaction structure with restricted
  * transfer policy enforcement via the flags byte in the PP1_RNFT locking script.
+ *
+ * <p>All signing is performed via {@link SigningCallback}, which decouples
+ * transaction construction from private key management. The callback receives
+ * a sighash digest and returns a DER-encoded signature — compatible with
+ * KMS, HSM, hardware wallets, or libspiffy4j's {@code CallbackTransactionSigner}.
  */
 public class RestrictedTokenTool {
 
@@ -63,7 +68,8 @@ public class RestrictedTokenTool {
      * Uses two-pass building with padding recalculation.
      */
     public Transaction createWitnessTxn(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -77,6 +83,8 @@ public class RestrictedTokenTool {
             byte[] ed25519PubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(ownerPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
@@ -84,8 +92,8 @@ public class RestrictedTokenTool {
 
         // First pass: build with empty PP1 unlocker to get preimage
         Transaction preImageTxn = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -106,8 +114,8 @@ public class RestrictedTokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -122,8 +130,8 @@ public class RestrictedTokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -137,13 +145,16 @@ public class RestrictedTokenTool {
      */
     public Transaction createTokenIssuanceTxn(
             Transaction tokenFundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
             byte[] rabinPubKeyHash,
             int flags,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
@@ -184,12 +195,15 @@ public class RestrictedTokenTool {
             PublicKey currentOwnerPubkey,
             Address recipientAddress,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] tokenId,
             byte[] rabinPubKeyHash,
             int flags)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -244,11 +258,15 @@ public class RestrictedTokenTool {
      */
     public Transaction createBurnTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner)
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
@@ -273,11 +291,15 @@ public class RestrictedTokenTool {
      */
     public Transaction createRedeemTokenTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner)
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();

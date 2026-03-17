@@ -23,6 +23,11 @@ import java.nio.ByteOrder;
  * <p>Encapsulates the construction of multi-output token transactions that conform
  * to the TSL1 protocol's proof-carrying transaction structure with balance conservation.
  *
+ * <p>All signing is performed via {@link SigningCallback}, which decouples
+ * transaction construction from private key management. The callback receives
+ * a sighash digest and returns a DER-encoded signature — compatible with
+ * KMS, HSM, hardware wallets, or libspiffy4j's {@code CallbackTransactionSigner}.
+ *
  * <p>Transaction output structures:
  * <ul>
  *   <li>Mint/Transfer/Merge: 5 outputs [Change, PP1_FT, PP2-FT, PP3-FT, Metadata]</li>
@@ -68,7 +73,8 @@ public class FungibleTokenTool {
      * <p>Outputs: [Change, PP1_FT, PP2-FT, PP3-FT, Metadata]
      *
      * @param tokenFundingTx       funds the mint; its txid becomes the tokenId
-     * @param fundingTxSigner      signer for the funding input
+     * @param fundingSigner        callback that signs sighash digests for the funding key
+     * @param fundingPubKey        public key corresponding to the funding signer
      * @param recipientAddress     address of the token recipient
      * @param witnessFundingTxId   txid of the transaction that will fund the first witness
      * @param amount               initial token supply
@@ -76,12 +82,15 @@ public class FungibleTokenTool {
      */
     public Transaction createFungibleMintTxn(
             Transaction tokenFundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
             long amount,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
@@ -122,7 +131,8 @@ public class FungibleTokenTool {
      * @param currentOwnerPubkey         public key of the current token owner
      * @param recipientAddress           address of the new token recipient
      * @param fundingTx                  transaction providing funding
-     * @param fundingTxSigner            signer for the funding input
+     * @param fundingSigner              callback that signs sighash digests for the funding key
+     * @param fundingPubKey              public key corresponding to the funding signer
      * @param recipientWitnessFundingTxId txid of the witness funding for the recipient
      * @param tokenId                    the token identifier
      * @param amount                     the full token balance being transferred
@@ -134,12 +144,15 @@ public class FungibleTokenTool {
             PublicKey currentOwnerPubkey,
             Address recipientAddress,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] tokenId,
             long amount,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -207,7 +220,8 @@ public class FungibleTokenTool {
      * @param recipientAddress           address of the token recipient
      * @param sendAmount                 token amount to send to recipient
      * @param fundingTx                  transaction providing funding
-     * @param fundingTxSigner            signer for the funding input
+     * @param fundingSigner              callback that signs sighash digests for the funding key
+     * @param fundingPubKey              public key corresponding to the funding signer
      * @param recipientWitnessFundingTxId txid of the witness funding for the recipient
      * @param changeWitnessFundingTxId   txid of the witness funding for the sender's change
      * @param tokenId                    the token identifier
@@ -221,13 +235,16 @@ public class FungibleTokenTool {
             Address recipientAddress,
             long sendAmount,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
             byte[] changeWitnessFundingTxId,
             byte[] tokenId,
             long totalAmount,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
@@ -312,9 +329,10 @@ public class FungibleTokenTool {
      * @param prevWitnessTxB           second parent's witness transaction
      * @param prevTokenTxB             second parent's token transaction
      * @param currentOwnerPubkey       public key of the current token owner
-     * @param ownerSigner              signer for the owner's inputs
+     * @param ownerCallback            callback that signs sighash digests for the owner key
      * @param fundingTx                transaction providing funding
-     * @param fundingTxSigner          signer for the funding input
+     * @param fundingCallback          callback that signs sighash digests for the funding key
+     * @param fundingPubKey            public key corresponding to the funding signer
      * @param mergedWitnessFundingTxId txid of the witness funding for the merged output
      * @param tokenId                  the token identifier
      * @param totalAmount              combined token balance (amountA + amountB)
@@ -327,15 +345,19 @@ public class FungibleTokenTool {
             Transaction prevWitnessTxB,
             Transaction prevTokenTxB,
             PublicKey currentOwnerPubkey,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey,
             byte[] mergedWitnessFundingTxId,
             byte[] tokenId,
             long totalAmount,
             int prevTripletBaseIndexA,
             int prevTripletBaseIndexB)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, currentOwnerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] ownerPKH = currentOwnerAddress.getHash();
@@ -380,7 +402,8 @@ public class FungibleTokenTool {
      * <p>Produces a 1-output transaction: Witness (locked to current token holder).
      * Uses two-pass building with padding recalculation.
      *
-     * @param fundingSigner          signer for the funding input
+     * @param fundingSigner          callback that signs sighash digests for the funding key
+     * @param fundingPubKey          public key corresponding to the funding signer
      * @param fundingTx              transaction providing funding
      * @param tokenTx                the token transaction being witnessed
      * @param ownerPubkey            public key of the current token owner
@@ -398,7 +421,8 @@ public class FungibleTokenTool {
      * @param recipientPKH           recipient's 20-byte HASH160 (for SPLIT_TRANSFER)
      */
     public Transaction createFungibleWitnessTxn(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             PublicKey ownerPubkey,
@@ -416,6 +440,8 @@ public class FungibleTokenTool {
             byte[] recipientPKH)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
+        TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
+
         int pp1FtIndex = tripletBaseIndex;
         int pp2Index = tripletBaseIndex + 1;
 
@@ -426,8 +452,8 @@ public class FungibleTokenTool {
 
         // First pass: build with empty PP1_FT unlocker to get preimage
         Transaction preImageTxn = new TransactionBuilder()
-                .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(fundingSigner, tokenTx, pp1FtIndex, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, tokenTx, pp1FtIndex, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, pp2Index, TransactionInput.MAX_SEQ_NUMBER, pp2FtUnlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -447,7 +473,7 @@ public class FungibleTokenTool {
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
                 sendAmount, changeAmount, recipientPKH);
 
-        Transaction witnessTx = buildWitnessTxn(fundingSigner, fundingTx, tokenTx,
+        Transaction witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1FtUnlocker, pp2FtUnlocker, witnessLocker);
 
         // Recalculate padding
@@ -460,7 +486,7 @@ public class FungibleTokenTool {
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
                 sendAmount, changeAmount, recipientPKH);
 
-        witnessTx = buildWitnessTxn(fundingSigner, fundingTx, tokenTx,
+        witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1FtUnlocker, pp2FtUnlocker, witnessLocker);
 
         return witnessTx;
@@ -470,20 +496,25 @@ public class FungibleTokenTool {
      * Burns a fungible token by spending all proof outputs (PP1_FT, PP2-FT, PP3-FT).
      *
      * @param tokenTx           the token transaction to burn
-     * @param ownerSigner       signer for the owner's inputs
+     * @param ownerCallback     callback that signs sighash digests for the owner key
      * @param ownerPubkey       public key of the current token owner
      * @param fundingTx         transaction providing funding
-     * @param fundingTxSigner   signer for the funding input
+     * @param fundingCallback   callback that signs sighash digests for the funding key
+     * @param fundingPubKey     public key corresponding to the funding signer
      * @param tripletBaseIndex  base index of the triplet (1 for standard, 4 for change after split)
      */
     public Transaction createFungibleBurnTxn(
             Transaction tokenTx,
-            TransactionSigner ownerSigner,
+            SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
-            TransactionSigner fundingTxSigner,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey,
             int tripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
         DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();

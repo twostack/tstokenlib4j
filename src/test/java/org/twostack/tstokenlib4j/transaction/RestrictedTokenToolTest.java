@@ -11,7 +11,6 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.crypto.RabinSignature;
@@ -126,12 +125,12 @@ public class RestrictedTokenToolTest {
         return result;
     }
 
-    private TransactionSigner bobSigner() {
-        return new TransactionSigner(sigHashAll, bobPrivateKey);
+    private SigningCallback bobSigningCallback() {
+        return sighash -> bobPrivateKey.sign(sighash);
     }
 
-    private TransactionSigner aliceSigner() {
-        return new TransactionSigner(sigHashAll, alicePrivateKey);
+    private SigningCallback aliceSigningCallback() {
+        return sighash -> alicePrivateKey.sign(sighash);
     }
 
     /**
@@ -140,7 +139,8 @@ public class RestrictedTokenToolTest {
     private Transaction issueRnftToBob(int flags) throws Exception {
         return restrictedTokenTool.createTokenIssuanceTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -159,7 +159,8 @@ public class RestrictedTokenToolTest {
      * Creates a witness transaction for a restricted token transaction.
      */
     private Transaction createWitness(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigningCallback,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -168,7 +169,8 @@ public class RestrictedTokenToolTest {
             RestrictedTokenAction action) throws Exception {
 
         return restrictedTokenTool.createWitnessTxn(
-                fundingSigner,
+                fundingSigningCallback,
+                fundingPubKey,
                 fundingTx,
                 tokenTx,
                 parentTokenTxBytes,
@@ -237,7 +239,8 @@ public class RestrictedTokenToolTest {
         Transaction issuanceTx = issueRnftToBob();
 
         Transaction witnessTx = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -257,7 +260,8 @@ public class RestrictedTokenToolTest {
 
         // Step 2: Create witness for issuance
         Transaction witnessTx = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -275,7 +279,8 @@ public class RestrictedTokenToolTest {
                 bobPub,
                 aliceAddress,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash,
@@ -297,10 +302,11 @@ public class RestrictedTokenToolTest {
 
         Transaction burnTx = restrictedTokenTool.createBurnTokenTxn(
                 issuanceTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 bobFunding2,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         // Burn should have 1 output (change) and 4 inputs (funding + PP1 + PP2 + PartialWitness)
         assertEquals("Burn should have 1 output", 1, burnTx.getOutputs().size());
@@ -319,10 +325,11 @@ public class RestrictedTokenToolTest {
 
         Transaction redeemTx = restrictedTokenTool.createRedeemTokenTxn(
                 issuanceTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 bobFunding2,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         // Redeem should have 1 output (change) and 4 inputs (funding + PP1 + PP2 + PartialWitness)
         assertEquals("Redeem should have 1 output", 1, redeemTx.getOutputs().size());

@@ -11,7 +11,6 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.crypto.RabinSignature;
@@ -128,17 +127,17 @@ public class TokenToolTest {
     }
 
     /**
-     * Creates a Bob-signed TransactionSigner for use in transaction building.
+     * Creates a Bob SigningCallback for use in transaction building.
      */
-    private TransactionSigner bobSigner() {
-        return new TransactionSigner(sigHashAll, bobPrivateKey);
+    private SigningCallback bobSigningCallback() {
+        return sighash -> bobPrivateKey.sign(sighash);
     }
 
     /**
-     * Creates an Alice-signed TransactionSigner for use in transaction building.
+     * Creates an Alice SigningCallback for use in transaction building.
      */
-    private TransactionSigner aliceSigner() {
-        return new TransactionSigner(sigHashAll, alicePrivateKey);
+    private SigningCallback aliceSigningCallback() {
+        return sighash -> alicePrivateKey.sign(sighash);
     }
 
     /**
@@ -147,7 +146,8 @@ public class TokenToolTest {
     private Transaction issueNftToBob() throws Exception {
         return tokenTool.createTokenIssuanceTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash,
@@ -158,7 +158,8 @@ public class TokenToolTest {
      * Creates a witness transaction for a token transaction, funded by a given funding tx.
      */
     private Transaction createWitness(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigningCallback,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -167,7 +168,8 @@ public class TokenToolTest {
             TokenAction action) throws Exception {
 
         return tokenTool.createWitnessTxn(
-                fundingSigner,
+                fundingSigningCallback,
+                fundingPubKey,
                 fundingTx,
                 tokenTx,
                 parentTokenTxBytes,
@@ -238,7 +240,8 @@ public class TokenToolTest {
         // Create a witness transaction for the issuance
         // For issuance witness, parentTokenTxBytes is empty (no prior token tx)
         Transaction witnessTx = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx, // use Alice's funding for the witness funding input
                 issuanceTx,
                 new byte[0],   // no parent token tx for issuance
@@ -258,7 +261,8 @@ public class TokenToolTest {
 
         // Step 2: Create witness for issuance
         Transaction witnessTx = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -278,7 +282,8 @@ public class TokenToolTest {
                 bobPub,
                 aliceAddress,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash);
@@ -296,7 +301,8 @@ public class TokenToolTest {
 
         // Step 2: Witness for issuance
         Transaction witness1 = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -314,7 +320,8 @@ public class TokenToolTest {
                 bobPub,
                 aliceAddress,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash);
@@ -322,7 +329,8 @@ public class TokenToolTest {
         // Step 4: Witness for transfer1
         Transaction bobFunding2 = Transaction.fromHex(BOB_FUNDING_TX_HEX);
         Transaction witness2 = createWitness(
-                aliceSigner(),
+                aliceSigningCallback(),
+                alicePub,
                 bobFunding2,
                 transfer1,
                 issuanceTx.serialize(),
@@ -339,7 +347,8 @@ public class TokenToolTest {
                 alicePub,
                 bobAddress,
                 bobFunding3,
-                aliceSigner(),
+                aliceSigningCallback(),
+                alicePub,
                 bobFunding3.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash);
@@ -347,7 +356,8 @@ public class TokenToolTest {
         // Step 6: Witness for transfer2
         Transaction aliceFunding3 = Transaction.fromHex(ALICE_FUNDING_TX_HEX);
         Transaction witness3 = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding3,
                 transfer2,
                 transfer1.serialize(),
@@ -360,10 +370,11 @@ public class TokenToolTest {
 
         Transaction burnTx = tokenTool.createBurnTokenTxn(
                 transfer2,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 bobFunding4,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         // Burn should have 1 output (change) and 4 inputs (funding + PP1 + PP2 + PartialWitness)
         assertEquals("Burn should have 1 output", 1, burnTx.getOutputs().size());
@@ -379,7 +390,8 @@ public class TokenToolTest {
 
         // Step 2: Witness for issuance
         Transaction witnessTx = createWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -397,7 +409,8 @@ public class TokenToolTest {
                 bobPub,
                 aliceAddress,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 tokenId,
                 rabinPubKeyHash);

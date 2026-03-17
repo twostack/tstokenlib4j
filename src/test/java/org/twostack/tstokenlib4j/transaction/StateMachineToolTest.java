@@ -9,7 +9,6 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
 import org.twostack.tstokenlib4j.unlock.StateMachineAction;
 
@@ -84,12 +83,12 @@ public class StateMachineToolTest {
 
     // --- Helper methods ---
 
-    private TransactionSigner merchantSigner() {
-        return new TransactionSigner(sigHashAll, merchantPrivateKey);
+    private SigningCallback merchantSigningCallback() {
+        return sighash -> merchantPrivateKey.sign(sighash);
     }
 
-    private TransactionSigner customerSigner() {
-        return new TransactionSigner(sigHashAll, customerPrivateKey);
+    private SigningCallback customerSigningCallback() {
+        return sighash -> customerPrivateKey.sign(sighash);
     }
 
     /**
@@ -98,7 +97,8 @@ public class StateMachineToolTest {
     private Transaction issueSmToken() throws Exception {
         return smTool.createTokenIssuanceTxn(
                 merchantFundingTx,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 merchantAddress,
                 merchantAddress.getHash(),
                 customerAddress.getHash(),
@@ -113,7 +113,8 @@ public class StateMachineToolTest {
      */
     private Transaction createIssuanceWitness(Transaction issuanceTx) throws Exception {
         return smTool.createWitnessTxn(
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 customerFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -218,7 +219,8 @@ public class StateMachineToolTest {
                 issuanceTx,
                 merchantPub,
                 enrollFunding,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 enrollFunding.getTransactionIdBytes(),
                 eventData,
                 tokenId,
@@ -254,7 +256,8 @@ public class StateMachineToolTest {
                 issuanceTx,
                 merchantPub,
                 enrollFunding,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 enrollFunding.getTransactionIdBytes(),
                 enrollEventData,
                 tokenId,
@@ -268,7 +271,8 @@ public class StateMachineToolTest {
         // Step 4: Witness for enroll (ENROLL action, merchant signs)
         Transaction enrollWitnessFunding = Transaction.fromHex(ALICE_FUNDING_TX_HEX);
         Transaction enrollWitnessTx = smTool.createWitnessTxn(
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 enrollWitnessFunding,
                 enrollTx,
                 issuanceTx.serialize(),
@@ -287,7 +291,8 @@ public class StateMachineToolTest {
                 enrollTx,
                 customerPub,
                 confirmFunding,
-                customerSigner(),
+                customerSigningCallback(),
+                customerPub,
                 confirmFunding.getTransactionIdBytes(),
                 2,  // newState = CONFIRMED
                 merchantAddress.getHash(),  // next actor is merchant
@@ -302,15 +307,17 @@ public class StateMachineToolTest {
         commitmentHash = chainCommitment(commitmentHash, confirmEventData);
 
         // Step 6: Witness for confirm (CONFIRM - dual sig)
+        // createDualWitnessTxn takes: merchantCallback, merchantPubKey, customerPrivateKey, ...
         Transaction confirmWitnessFunding = Transaction.fromHex(BOB_FUNDING_TX_HEX);
         Transaction confirmWitnessTx = smTool.createDualWitnessTxn(
-                customerSigner(),
-                merchantPrivateKey,
+                merchantSigningCallback(),
+                merchantPub,
+                customerPrivateKey,
                 confirmWitnessFunding,
                 confirmTx,
                 enrollTx.serialize(),
-                customerPub,
                 merchantPub,
+                customerPub,
                 customerAddress.getHash(),
                 StateMachineAction.CONFIRM,
                 confirmEventData);
@@ -323,7 +330,8 @@ public class StateMachineToolTest {
                 confirmTx,
                 merchantPub,
                 convertFunding,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 convertFunding.getTransactionIdBytes(),
                 3,  // newState = CONVERTING
                 customerAddress.getHash(),  // next actor is customer
@@ -340,7 +348,8 @@ public class StateMachineToolTest {
         // Step 8: Witness for convert (CONVERT - dual sig)
         Transaction convertWitnessFunding = Transaction.fromHex(ALICE_FUNDING_TX_HEX);
         Transaction convertWitnessTx = smTool.createDualWitnessTxn(
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 customerPrivateKey,
                 convertWitnessFunding,
                 convertTx,
@@ -359,7 +368,8 @@ public class StateMachineToolTest {
                 convertTx,
                 customerPub,
                 settleFunding,
-                customerSigner(),
+                customerSigningCallback(),
+                customerPub,
                 settleFunding.getTransactionIdBytes(),
                 BigInteger.valueOf(1000),
                 BigInteger.valueOf(2000),
@@ -394,7 +404,8 @@ public class StateMachineToolTest {
                 issuanceTx,
                 merchantPub,
                 enrollFunding,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 enrollFunding.getTransactionIdBytes(),
                 enrollEventData,
                 tokenId,
@@ -408,7 +419,8 @@ public class StateMachineToolTest {
         // Step 4: Witness for enroll (ENROLL)
         Transaction enrollWitnessFunding = Transaction.fromHex(ALICE_FUNDING_TX_HEX);
         Transaction enrollWitnessTx = smTool.createWitnessTxn(
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 enrollWitnessFunding,
                 enrollTx,
                 issuanceTx.serialize(),
@@ -419,14 +431,15 @@ public class StateMachineToolTest {
                 0, 0, 0, -1,
                 1, 2);
 
-        // Step 5: Timeout (merchant signs from ACTIVE state)
+        // Step 5: Timeout (customer signs from ACTIVE state)
         Transaction timeoutFunding = Transaction.fromHex(BOB_FUNDING_TX_HEX);
         Transaction timeoutTx = smTool.createTimeoutTxn(
                 enrollWitnessTx,
                 enrollTx,
                 customerPub,
                 timeoutFunding,
-                customerSigner(),
+                customerSigningCallback(),
+                customerPub,
                 timeoutFunding.getTransactionIdBytes(),
                 BigInteger.valueOf(500),
                 100,  // nLockTime
@@ -450,10 +463,11 @@ public class StateMachineToolTest {
         Transaction burnFunding = Transaction.fromHex(BOB_FUNDING_TX_HEX);
         Transaction burnTx = smTool.createBurnTokenTxn(
                 issuanceTx,
-                merchantSigner(),
+                merchantSigningCallback(),
                 merchantPub,
                 burnFunding,
-                merchantSigner(),
+                merchantSigningCallback(),
+                merchantPub,
                 1, 2, 3);
 
         assertEquals("Burn should have 1 output", 1, burnTx.getOutputs().size());

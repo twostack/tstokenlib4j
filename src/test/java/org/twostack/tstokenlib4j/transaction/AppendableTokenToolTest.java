@@ -9,7 +9,6 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
 import org.twostack.tstokenlib4j.unlock.AppendableTokenAction;
 
@@ -77,12 +76,12 @@ public class AppendableTokenToolTest {
 
     // --- Helper methods ---
 
-    private TransactionSigner bobSigner() {
-        return new TransactionSigner(sigHashAll, bobPrivateKey);
+    private SigningCallback bobSigningCallback() {
+        return sighash -> bobPrivateKey.sign(sighash);
     }
 
-    private TransactionSigner aliceSigner() {
-        return new TransactionSigner(sigHashAll, alicePrivateKey);
+    private SigningCallback aliceSigningCallback() {
+        return sighash -> alicePrivateKey.sign(sighash);
     }
 
     /**
@@ -91,7 +90,8 @@ public class AppendableTokenToolTest {
     private Transaction issueAtToBob() throws Exception {
         return atTool.createTokenIssuanceTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 bobAddress.getHash(),
@@ -103,7 +103,8 @@ public class AppendableTokenToolTest {
      * Creates a witness for an AT token transaction.
      */
     private Transaction createAtWitness(
-            TransactionSigner fundingSigner,
+            SigningCallback fundingSigningCallback,
+            PublicKey fundingPubKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
@@ -113,7 +114,8 @@ public class AppendableTokenToolTest {
             byte[] stampMetadata) throws Exception {
 
         return atTool.createWitnessTxn(
-                fundingSigner,
+                fundingSigningCallback,
+                fundingPubKey,
                 fundingTx,
                 tokenTx,
                 parentTokenTxBytes,
@@ -174,7 +176,8 @@ public class AppendableTokenToolTest {
         Transaction issuanceTx = issueAtToBob();
 
         Transaction witnessTx = createAtWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -195,7 +198,8 @@ public class AppendableTokenToolTest {
 
         // Step 2: Witness for issuance
         Transaction witnessTx = createAtWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -214,7 +218,8 @@ public class AppendableTokenToolTest {
                 bobPub,
                 aliceAddress,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 tokenId,
                 bobAddress.getHash(),
@@ -234,7 +239,8 @@ public class AppendableTokenToolTest {
 
         // Step 2: Witness for issuance
         Transaction witnessTx = createAtWitness(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFundingTx,
                 issuanceTx,
                 new byte[0],
@@ -252,7 +258,8 @@ public class AppendableTokenToolTest {
                 issuanceTx,
                 bobPub,
                 aliceFunding2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPub,
                 aliceFunding2.getTransactionIdBytes(),
                 STAMP_METADATA,
                 bobAddress.getHash(),
@@ -275,10 +282,11 @@ public class AppendableTokenToolTest {
 
         Transaction burnTx = atTool.createBurnTokenTxn(
                 issuanceTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 aliceFunding2,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         assertEquals("Burn should have 1 output", 1, burnTx.getOutputs().size());
         assertEquals("Burn should have 4 inputs", 4, burnTx.getInputs().size());
@@ -294,10 +302,11 @@ public class AppendableTokenToolTest {
 
         Transaction redeemTx = atTool.createRedeemTokenTxn(
                 issuanceTx,
-                bobSigner(),
+                bobSigningCallback(),
                 bobPub,
                 aliceFunding2,
-                bobSigner());
+                bobSigningCallback(),
+                bobPub);
 
         assertEquals("Redeem should have 1 output", 1, redeemTx.getOutputs().size());
         assertEquals("Redeem should have 4 inputs", 4, redeemTx.getInputs().size());

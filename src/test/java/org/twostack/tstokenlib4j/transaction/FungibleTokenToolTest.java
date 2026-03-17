@@ -10,7 +10,6 @@ import org.twostack.bitcoin4j.exception.InvalidKeyException;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.bitcoin4j.transaction.TransactionSigner;
 import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
 import org.twostack.tstokenlib4j.unlock.FungibleTokenAction;
 
@@ -67,12 +66,12 @@ public class FungibleTokenToolTest {
         return Transaction.fromHex(ALICE_FUNDING_TX_HEX);
     }
 
-    private TransactionSigner bobSigner() {
-        return new TransactionSigner(sigHashAll, bobPrivateKey);
+    private SigningCallback bobSigningCallback() {
+        return sighash -> bobPrivateKey.sign(sighash);
     }
 
-    private TransactionSigner aliceSigner() {
-        return new TransactionSigner(sigHashAll, alicePrivateKey);
+    private SigningCallback aliceSigningCallback() {
+        return sighash -> alicePrivateKey.sign(sighash);
     }
 
     // -------------------------------------------------------------------------
@@ -85,7 +84,8 @@ public class FungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 1000,
@@ -117,7 +117,8 @@ public class FungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 5000,
@@ -144,14 +145,16 @@ public class FungibleTokenToolTest {
 
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 1000,
                 null);
 
         Transaction witnessTx = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx,
                 mintTx,
                 bobPubKey,
@@ -183,7 +186,8 @@ public class FungibleTokenToolTest {
         // Step 1: Mint
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 1000,
@@ -193,7 +197,8 @@ public class FungibleTokenToolTest {
 
         // Step 2: Witness for mint
         Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx,
                 mintTx,
                 bobPubKey,
@@ -211,7 +216,8 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 aliceAddress,
                 transferFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 aliceFundingTx.getTransactionIdBytes(),
                 tokenId,
                 1000,
@@ -231,7 +237,8 @@ public class FungibleTokenToolTest {
         // Mint 1000 tokens
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 1000,
@@ -241,7 +248,8 @@ public class FungibleTokenToolTest {
 
         // Mint witness
         Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx,
                 mintTx,
                 bobPubKey,
@@ -261,7 +269,8 @@ public class FungibleTokenToolTest {
                 aliceAddress,
                 300,
                 splitFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 aliceFundingTx.getTransactionIdBytes(),
                 changeFundingTx.getTransactionIdBytes(),
                 tokenId,
@@ -299,7 +308,8 @@ public class FungibleTokenToolTest {
         // Mint
         Transaction mintTx = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 1000,
@@ -309,7 +319,8 @@ public class FungibleTokenToolTest {
 
         // Witness
         Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx,
                 mintTx,
                 bobPubKey,
@@ -327,7 +338,8 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 aliceAddress,
                 transferFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 aliceFundingTx.getTransactionIdBytes(),
                 tokenId,
                 1000,
@@ -338,10 +350,11 @@ public class FungibleTokenToolTest {
 
         Transaction burnTx = tool.createFungibleBurnTxn(
                 transferTx,
-                aliceSigner(),
+                aliceSigningCallback(),
                 alicePubKey,
                 burnFundingTx,
-                aliceSigner(),
+                aliceSigningCallback(),
+                alicePubKey,
                 1);
 
         assertEquals("Burn should produce 1 output", 1, burnTx.getOutputs().size());
@@ -360,7 +373,8 @@ public class FungibleTokenToolTest {
         // --- First mint: 600 tokens ---
         Transaction mintTxA = tool.createFungibleMintTxn(
                 bobFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 600,
@@ -369,7 +383,8 @@ public class FungibleTokenToolTest {
         byte[] tokenId = bobFundingTx.getTransactionIdBytes();
 
         Transaction mintWitnessTxA = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx,
                 mintTxA,
                 bobPubKey,
@@ -382,14 +397,16 @@ public class FungibleTokenToolTest {
 
         Transaction mintTxB = tool.createFungibleMintTxn(
                 bobFundingTx2,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobAddress,
                 bobFundingTx2.getTransactionIdBytes(),
                 400,
                 null);
 
         Transaction mintWitnessTxB = tool.createFungibleWitnessTxn(
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 bobFundingTx2,
                 mintTxB,
                 bobPubKey,
@@ -406,9 +423,10 @@ public class FungibleTokenToolTest {
                 mintWitnessTxB,
                 mintTxB,
                 bobPubKey,
-                bobSigner(),
+                bobSigningCallback(),
                 mergeFundingTx,
-                bobSigner(),
+                bobSigningCallback(),
+                bobPubKey,
                 mergeFundingTx.getTransactionIdBytes(),
                 tokenId,
                 1000,
