@@ -135,13 +135,7 @@ public final class Rabin {
      * Compute HASH160(bigIntToBytes(n)) — the 20-byte hash of the Rabin public key.
      */
     public static byte[] rabinPubKeyHash(BigInteger n) {
-        byte[] nBytes = n.toByteArray();
-        // Strip leading zero byte if present
-        if (nBytes[0] == 0 && nBytes.length > 1) {
-            byte[] trimmed = new byte[nBytes.length - 1];
-            System.arraycopy(nBytes, 1, trimmed, 0, trimmed.length);
-            nBytes = trimmed;
-        }
+        byte[] nBytes = bigIntToScriptNum(n);
         return Utils.sha256hash160(nBytes);
     }
 
