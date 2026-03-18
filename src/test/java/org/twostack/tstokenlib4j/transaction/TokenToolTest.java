@@ -147,6 +147,7 @@ public class TokenToolTest {
     private Transaction issueNftToBob() throws Exception {
         return tokenTool.createTokenIssuanceTxn(
                 bobFundingTx,
+                1,
                 bobSigningCallback(),
                 bobPub,
                 bobAddress,

@@ -167,6 +167,7 @@ public class TokenTool {
      */
     public Transaction createTokenIssuanceTxn(
             Transaction tokenFundingTx,
+            int fundingOutputIndex,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             Address recipientAddress,
@@ -182,7 +183,7 @@ public class TokenTool {
         byte[] tokenId = tokenFundingTx.getTransactionIdBytes();
         byte[] recipientPKH = recipientAddress.getHash();
 
-        tokenTxBuilder.spendFromTransaction(signer, tokenFundingTx, 1,
+        tokenTxBuilder.spendFromTransaction(signer, tokenFundingTx, fundingOutputIndex,
                 TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker);
         tokenTxBuilder.withFeePerKb(1);
 

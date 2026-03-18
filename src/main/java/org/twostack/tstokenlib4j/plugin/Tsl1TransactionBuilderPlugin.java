@@ -201,9 +201,10 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
 
         return switch (action) {
             case "nft.issue" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 yield new TokenTool(networkAddressType).createTokenIssuanceTxn(
-                        fundingTx, signer, pubKey,
+                        fundingTx, fundingVout, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         requireHexBytes(params, "witnessFundingTxId"),
                         requireHexBytes(params, "rabinPKH"),
@@ -687,6 +688,16 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
      * Resolve a funding transaction. First tries the params map for a txid,
      * then falls back to the first available funding UTXO.
      */
+    /**
+     * Resolve the funding output index. Uses the first funding UTXO's vout.
+     */
+    private int resolveFundingVout(Map<String, Object> params, PluginTransactionRequest request) {
+        if (!request.fundingUtxos().isEmpty()) {
+            return request.fundingUtxos().get(0).vout();
+        }
+        return 1; // legacy default
+    }
+
     private Transaction lookupTransaction(TransactionLookup lookup, Map<String, Object> params,
                                            String paramKey, PluginTransactionRequest request) {
         String txid = optionalString(params, paramKey);
