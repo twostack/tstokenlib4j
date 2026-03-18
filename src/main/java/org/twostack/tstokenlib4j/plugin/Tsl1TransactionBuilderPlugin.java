@@ -211,13 +211,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "metadataBytes"));
             }
             case "nft.transfer" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
                 yield new TokenTool(networkAddressType).createTokenTransferTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        fundingTx, signer, pubKey,
+                        fundingTx, fundingVout, signer, pubKey,
                         requireHexBytes(params, "recipientWitnessFundingTxId"),
                         requireHexBytes(params, "tokenId"),
                         requireHexBytes(params, "rabinPKH"));

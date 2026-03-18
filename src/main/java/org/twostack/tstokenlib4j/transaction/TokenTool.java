@@ -227,6 +227,7 @@ public class TokenTool {
             PublicKey currentOwnerPubkey,
             Address recipientAddress,
             Transaction fundingTx,
+            int fundingOutputIndex,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             byte[] recipientWitnessFundingTxId,
@@ -252,7 +253,7 @@ public class TokenTool {
 
         // First pass: empty PP3 unlocker to get preimage
         Transaction childPreImageTxn = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
@@ -273,7 +274,7 @@ public class TokenTool {
 
         // Final build with PP3 unlocker
         return new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
