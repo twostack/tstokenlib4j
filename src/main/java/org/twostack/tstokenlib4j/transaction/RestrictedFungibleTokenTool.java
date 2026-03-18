@@ -96,7 +96,7 @@ public class RestrictedFungibleTokenTool {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
         byte[] tokenId = tokenFundingTx.getTransactionIdBytes();
         byte[] recipientPKH = recipientAddress.getHash();
@@ -148,7 +148,7 @@ public class RestrictedFungibleTokenTool {
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
 
         return new TransactionBuilder()
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -185,7 +185,7 @@ public class RestrictedFungibleTokenTool {
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
 
         return new TransactionBuilder()
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -257,7 +257,7 @@ public class RestrictedFungibleTokenTool {
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(ownerPubkey.getPubKeyHash());
         PP2FtUnlockBuilder pp2FtUnlocker = PP2FtUnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // First pass: build with empty PP1_RFT unlocker to get preimage
@@ -359,7 +359,7 @@ public class RestrictedFungibleTokenTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(prevTokenTx.getOutputs().size() - 1).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(currentOwnerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -464,7 +464,7 @@ public class RestrictedFungibleTokenTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(prevTokenTx.getOutputs().size() - 1).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(currentOwnerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -571,7 +571,7 @@ public class RestrictedFungibleTokenTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTxA.getOutputs().get(prevTokenTxA.getOutputs().size() - 1).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessAUnlocker = new ModP2PKHUnlockBuilder(currentOwnerPubkey);
         ModP2PKHUnlockBuilder prevWitnessBUnlocker = new ModP2PKHUnlockBuilder(currentOwnerPubkey);
         PartialWitnessFtUnlockBuilder pp3BurnUnlockerA = PartialWitnessFtUnlockBuilder.forBurn(currentOwnerPubkey);
@@ -699,7 +699,7 @@ public class RestrictedFungibleTokenTool {
             ModP2PKHLockBuilder witnessLocker)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(ownerPubkey);
         return new TransactionBuilder()
                 .spendFromTransaction(fundingSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingSigner, tokenTx, pp1FtIndex, TransactionInput.MAX_SEQ_NUMBER, pp1RftUnlocker)

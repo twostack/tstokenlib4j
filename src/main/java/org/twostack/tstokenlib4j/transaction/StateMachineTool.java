@@ -103,7 +103,7 @@ public class StateMachineTool {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
         byte[] tokenId = tokenFundingTx.getTransactionIdBytes();
 
@@ -177,7 +177,7 @@ public class StateMachineTool {
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(signerPubKey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // For TIMEOUT, nSequence must be < MAX to enable nLockTime
@@ -281,7 +281,7 @@ public class StateMachineTool {
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(merchantPubKeyForSigning);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // First pass: build tx to get sighash preimage
@@ -411,7 +411,7 @@ public class StateMachineTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(4).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(merchantPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -531,7 +531,7 @@ public class StateMachineTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(4).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(signerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -658,7 +658,7 @@ public class StateMachineTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(4).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(signerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -775,7 +775,7 @@ public class StateMachineTool {
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(4).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(signerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -853,7 +853,7 @@ public class StateMachineTool {
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
 
         TransactionBuilder burnBuilder = new TransactionBuilder()
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)

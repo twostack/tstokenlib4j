@@ -100,7 +100,7 @@ public class TokenTool {
 
         ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(ownerPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // First pass: build with empty PP1 unlocker to get preimage
@@ -245,7 +245,7 @@ public class TokenTool {
         // Carry forward metadata from parent token tx (output[4])
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(prevTokenTx.getOutputs().get(4).getScript());
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(currentOwnerPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
@@ -307,7 +307,7 @@ public class TokenTool {
         TransactionSigner ownerSgn = SignerAdapter.fromCallback(ownerSigner, ownerPubkey, sigHashAll);
 
         Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
 
         return new TransactionBuilder()
                 .spendFromTransaction(fundingSgn, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
