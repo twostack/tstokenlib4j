@@ -84,6 +84,7 @@ public class TokenTool {
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             Transaction fundingTx,
+            int fundingOutputIndex,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
             PublicKey ownerPubkey,
@@ -105,7 +106,7 @@ public class TokenTool {
 
         // First pass: build with empty PP1 unlocker to get preimage
         Transaction preImageTxn = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
@@ -127,7 +128,7 @@ public class TokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
@@ -143,7 +144,7 @@ public class TokenTool {
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)

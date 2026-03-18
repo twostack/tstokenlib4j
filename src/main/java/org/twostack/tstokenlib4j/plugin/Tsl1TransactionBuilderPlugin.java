@@ -224,16 +224,21 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "rabinPKH"));
             }
             case "nft.witness" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(
-                        resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                if (parentTokenTxId.matches("^0+$")) {
+                    parentTokenTxBytes = new byte[0]; // issuance — no parent token
+                } else {
+                    parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
                 String actionType = optionalString(params, "witnessAction");
                 TokenAction tokenAction = "ISSUANCE".equals(actionType)
                         ? TokenAction.ISSUANCE : TokenAction.TRANSFER;
                 yield new TokenTool(networkAddressType).createWitnessTxn(
-                        signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
+                        signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, pubKey,
                         requireHexBytes(params, "tokenChangePKH"), tokenAction,
                         optionalHexBytes(params, "rabinN"),
                         optionalHexBytes(params, "rabinS"),
