@@ -215,8 +215,11 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                String ownerPubKeyHex = optionalString(params, "ownerPubKeyHex");
+                PublicKey ownerPubKey = ownerPubKeyHex != null
+                        ? PublicKey.fromHex(ownerPubKeyHex) : pubKey;
                 yield new TokenTool(networkAddressType).createTokenTransferTxn(
-                        prevWitnessTx, prevTokenTx, pubKey,
+                        prevWitnessTx, prevTokenTx, ownerPubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, fundingVout, signer, pubKey,
                         requireHexBytes(params, "recipientWitnessFundingTxId"),
@@ -237,8 +240,12 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 String actionType = optionalString(params, "witnessAction");
                 TokenAction tokenAction = "ISSUANCE".equals(actionType)
                         ? TokenAction.ISSUANCE : TokenAction.TRANSFER;
+                // Owner pubkey may differ from funding pubkey if at different derivation index
+                String ownerPubKeyHex = optionalString(params, "ownerPubKeyHex");
+                PublicKey ownerPubKey = ownerPubKeyHex != null
+                        ? PublicKey.fromHex(ownerPubKeyHex) : pubKey;
                 yield new TokenTool(networkAddressType).createWitnessTxn(
-                        signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, pubKey,
+                        signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, ownerPubKey,
                         requireHexBytes(params, "tokenChangePKH"), tokenAction,
                         optionalHexBytes(params, "rabinN"),
                         optionalHexBytes(params, "rabinS"),
