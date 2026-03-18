@@ -177,7 +177,7 @@ public class TokenTool {
 
         TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
-        DefaultUnlockBuilder fundingUnlocker = new DefaultUnlockBuilder();
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
         TransactionBuilder tokenTxBuilder = new TransactionBuilder();
         byte[] tokenId = tokenFundingTx.getTransactionIdBytes();
         byte[] recipientPKH = recipientAddress.getHash();
