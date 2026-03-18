@@ -1,8 +1,9 @@
 /**
- * Parsers for extracting token metadata from serialized locking scripts.
+ * PP1 script template implementations for Bitcoin4J's {@code ScriptTemplateRegistry}.
  *
- * <p>{@link org.twostack.tstokenlib4j.parser.PP1TokenScriptParser} extracts the
- * common ownerPKH and tokenId fields from any PP1* locking script by reading
- * the shared prefix layout.
+ * <p>Contains six {@code ScriptTemplate} implementations (one per PP1 archetype)
+ * and their corresponding typed {@code ScriptInfo} records for field extraction.
+ * {@link org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar#registerAll()}
+ * registers all templates in most-specific-first order.
  */
 package org.twostack.tstokenlib4j.parser;

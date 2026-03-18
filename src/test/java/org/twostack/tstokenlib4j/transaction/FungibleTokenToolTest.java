@@ -8,14 +8,14 @@ import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.exception.InvalidKeyException;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
+import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
+import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.FungibleTokenAction;
 
 import java.math.BigInteger;
 import java.util.Arrays;
-import java.util.Optional;
 
 import static org.junit.Assert.*;
 
@@ -46,6 +46,8 @@ public class FungibleTokenToolTest {
 
     @Before
     public void setUp() throws InvalidKeyException {
+        PP1TemplateRegistrar.registerAll();
+
         sigHashAll = SigHashType.FORKID.value | SigHashType.ALL.value;
 
         bobPrivateKey = PrivateKey.fromWIF(BOB_WIF);
@@ -124,15 +126,15 @@ public class FungibleTokenToolTest {
                 5000,
                 null);
 
-        // Parse PP1_FT output script to extract tokenId
-        Optional<PP1TokenScriptParser.TokenScriptInfo> info =
-                PP1TokenScriptParser.parse(mintTx.getOutputs().get(1).getScript());
+        // Extract tokenId from PP1_FT output script at bytes 22-53
+        Script pp1Script = mintTx.getOutputs().get(1).getScript();
+        assertNotNull("PP1_FT script should be parseable", pp1Script);
 
-        assertTrue("PP1_FT script should be parseable", info.isPresent());
+        byte[] tokenId = Arrays.copyOfRange(pp1Script.getProgram(), 22, 54);
 
         // tokenId should match the funding tx id
         assertArrayEquals("tokenId should be funding tx hash",
-                bobFundingTx.getTransactionIdBytes(), info.get().tokenId());
+                bobFundingTx.getTransactionIdBytes(), tokenId);
     }
 
     // -------------------------------------------------------------------------

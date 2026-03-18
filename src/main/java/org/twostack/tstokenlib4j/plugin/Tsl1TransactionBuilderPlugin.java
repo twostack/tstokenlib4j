@@ -13,8 +13,10 @@ import org.twostack.libspiffy4j.plugin.*;
 import org.twostack.tstokenlib4j.lock.*;
 import org.twostack.tstokenlib4j.parser.*;
 import org.twostack.tstokenlib4j.transaction.*;
-import org.twostack.tstokenlib4j.unlock.TokenAction;
+import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
+import org.twostack.tstokenlib4j.unlock.*;
 
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
 
@@ -243,10 +245,439 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 yield new TokenTool(networkAddressType).createBurnTokenTxn(
                         tokenTx, signer, pubKey, fundingTx, signer, pubKey);
             }
-            // TODO: ft.*, at.*, sm.*, rnft.*, rft.* actions follow the same pattern.
-            // Each dispatches to the corresponding Tool class method with params resolved
-            // from the map and transactions resolved via lookup.
-            default -> throw new IllegalArgumentException("Action '" + action + "' not yet implemented");
+            // ── FT ──
+            case "ft.mint" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                yield new FungibleTokenTool(networkAddressType).createFungibleMintTxn(
+                        fundingTx, signer, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        requireLong(params, "amount"),
+                        optionalHexBytes(params, "metadataBytes"));
+            }
+            case "ft.transfer" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new FungibleTokenTool(networkAddressType).createFungibleTransferTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireLong(params, "amount"),
+                        optionalInt(params, "prevTripletBaseIndex", 1));
+            }
+            case "ft.split" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new FungibleTokenTool(networkAddressType).createFungibleSplitTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireLong(params, "sendAmount"),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "changeWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireLong(params, "totalAmount"),
+                        optionalInt(params, "prevTripletBaseIndex", 1));
+            }
+            case "ft.merge" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTxA = resolveTransaction(lookup, requireString(params, "prevWitnessTxIdA"));
+                Transaction prevTokenTxA = resolveTransaction(lookup, requireString(params, "prevTokenTxIdA"));
+                Transaction prevWitnessTxB = resolveTransaction(lookup, requireString(params, "prevWitnessTxIdB"));
+                Transaction prevTokenTxB = resolveTransaction(lookup, requireString(params, "prevTokenTxIdB"));
+                yield new FungibleTokenTool(networkAddressType).createFungibleMergeTxn(
+                        prevWitnessTxA, prevTokenTxA, prevWitnessTxB, prevTokenTxB,
+                        pubKey, signer, fundingTx, signer, pubKey,
+                        requireHexBytes(params, "mergedWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireLong(params, "totalAmount"),
+                        optionalInt(params, "prevTripletBaseIndexA", 1),
+                        optionalInt(params, "prevTripletBaseIndexB", 1));
+            }
+            case "ft.witness" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                String parentTokenTxId = requireString(params, "parentTokenTxId");
+                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                FungibleTokenAction ftAction = FungibleTokenAction.valueOf(
+                        requireString(params, "witnessAction"));
+                String parentTokenTxIdB = optionalString(params, "parentTokenTxIdB");
+                byte[] parentTokenTxBytesB = parentTokenTxIdB != null
+                        ? Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxIdB)) : null;
+                yield new FungibleTokenTool(networkAddressType).createFungibleWitnessTxn(
+                        signer, pubKey, fundingTx, tokenTx, pubKey,
+                        requireHexBytes(params, "tokenChangePKH"),
+                        ftAction, parentTokenTxBytes,
+                        requireInt(params, "parentOutputCount"),
+                        optionalInt(params, "tripletBaseIndex", 1),
+                        parentTokenTxBytesB,
+                        optionalInt(params, "parentOutputCountB", 0),
+                        optionalInt(params, "parentPP1FtIndexA", 1),
+                        optionalInt(params, "parentPP1FtIndexB", 0),
+                        optionalLong(params, "sendAmount", 0),
+                        optionalLong(params, "changeAmount", 0),
+                        optionalHexBytes(params, "recipientPKH"));
+            }
+            case "ft.burn" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new FungibleTokenTool(networkAddressType).createFungibleBurnTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey,
+                        optionalInt(params, "tripletBaseIndex", 1));
+            }
+
+            // ── AT ──
+            case "at.issue" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                yield new AppendableTokenTool(networkAddressType).createTokenIssuanceTxn(
+                        fundingTx, signer, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        requireHexBytes(params, "issuerPKH"),
+                        requireInt(params, "threshold"),
+                        optionalHexBytes(params, "metadataBytes"));
+            }
+            case "at.transfer" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new AppendableTokenTool(networkAddressType).createTokenTransferTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "issuerPKH"),
+                        requireInt(params, "stampCount"),
+                        requireInt(params, "threshold"),
+                        requireHexBytes(params, "stampsHash"));
+            }
+            case "at.stamp" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new AppendableTokenTool(networkAddressType).createTokenStampTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "issuerWitnessFundingTxId"),
+                        requireHexBytes(params, "stampMetadata"),
+                        requireHexBytes(params, "ownerPKH"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "issuerPKH"),
+                        requireInt(params, "parentStampCount"),
+                        requireInt(params, "threshold"),
+                        requireHexBytes(params, "parentStampsHash"));
+            }
+            case "at.witness" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                String parentTokenTxId = requireString(params, "parentTokenTxId");
+                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                AppendableTokenAction atAction = AppendableTokenAction.valueOf(
+                        requireString(params, "witnessAction"));
+                yield new AppendableTokenTool(networkAddressType).createWitnessTxn(
+                        signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
+                        requireHexBytes(params, "tokenChangePKH"),
+                        atAction,
+                        optionalHexBytes(params, "stampMetadata"));
+            }
+            case "at.burn" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new AppendableTokenTool(networkAddressType).createBurnTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+            case "at.redeem" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new AppendableTokenTool(networkAddressType).createRedeemTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+
+            // ── SM ──
+            case "sm.create" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                yield new StateMachineTool(networkAddressType).createTokenIssuanceTxn(
+                        fundingTx, signer, pubKey,
+                        requireAddress(params, "merchantAddress", networkAddressType),
+                        requireHexBytes(params, "merchantPKH"),
+                        requireHexBytes(params, "customerPKH"),
+                        requireInt(params, "transitionBitmask"),
+                        requireInt(params, "timeoutDelta"),
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        optionalHexBytes(params, "metadataBytes"));
+            }
+            case "sm.enroll" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new StateMachineTool(networkAddressType).createEnrollTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        optionalHexBytes(params, "eventData"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "merchantPKH"),
+                        requireHexBytes(params, "customerPKH"),
+                        requireInt(params, "state"),
+                        requireInt(params, "milestoneCount"),
+                        requireHexBytes(params, "commitmentHash"),
+                        requireInt(params, "transitionBitmask"),
+                        requireInt(params, "timeoutDelta"));
+            }
+            case "sm.transition" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new StateMachineTool(networkAddressType).createTransitionTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        requireInt(params, "newState"),
+                        requireHexBytes(params, "newOwnerPKH"),
+                        requireBoolean(params, "incrementMilestone"),
+                        optionalHexBytes(params, "eventData"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "merchantPKH"),
+                        requireHexBytes(params, "customerPKH"),
+                        requireInt(params, "state"),
+                        requireInt(params, "milestoneCount"),
+                        requireHexBytes(params, "commitmentHash"),
+                        requireInt(params, "transitionBitmask"),
+                        requireInt(params, "timeoutDelta"));
+            }
+            case "sm.settle" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new StateMachineTool(networkAddressType).createSettleTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        BigInteger.valueOf(requireLong(params, "custRewardAmount")),
+                        BigInteger.valueOf(requireLong(params, "merchPayAmount")),
+                        optionalHexBytes(params, "eventData"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "merchantPKH"),
+                        requireHexBytes(params, "customerPKH"),
+                        requireInt(params, "state"),
+                        requireInt(params, "milestoneCount"),
+                        requireHexBytes(params, "commitmentHash"),
+                        requireInt(params, "transitionBitmask"),
+                        requireInt(params, "timeoutDelta"));
+            }
+            case "sm.timeout" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new StateMachineTool(networkAddressType).createTimeoutTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        BigInteger.valueOf(requireLong(params, "refundAmount")),
+                        requireInt(params, "nLockTime"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "merchantPKH"),
+                        requireHexBytes(params, "customerPKH"),
+                        requireInt(params, "state"),
+                        requireInt(params, "milestoneCount"),
+                        requireHexBytes(params, "commitmentHash"),
+                        requireInt(params, "transitionBitmask"),
+                        requireInt(params, "timeoutDelta"));
+            }
+            case "sm.witness" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                String parentTokenTxId = requireString(params, "parentTokenTxId");
+                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                StateMachineAction smAction = StateMachineAction.valueOf(
+                        requireString(params, "witnessAction"));
+                yield new StateMachineTool(networkAddressType).createWitnessTxn(
+                        signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
+                        requireHexBytes(params, "tokenChangePKH"),
+                        smAction,
+                        optionalHexBytes(params, "eventData"),
+                        optionalLong(params, "custRewardAmount", 0),
+                        optionalLong(params, "merchPayAmount", 0),
+                        optionalLong(params, "refundAmount", 0),
+                        optionalInt(params, "nLockTime", 0),
+                        optionalInt(params, "pp1OutputIndex", 1),
+                        optionalInt(params, "pp2OutputIndex", 2));
+            }
+            case "sm.burn" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new StateMachineTool(networkAddressType).createBurnTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey,
+                        optionalInt(params, "pp1OutputIndex", 1),
+                        optionalInt(params, "pp2OutputIndex", 2),
+                        optionalInt(params, "pp3OutputIndex", 3));
+            }
+
+            // ── RNFT ──
+            case "rnft.issue" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                yield new RestrictedTokenTool(networkAddressType).createTokenIssuanceTxn(
+                        fundingTx, signer, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"),
+                        optionalHexBytes(params, "metadataBytes"));
+            }
+            case "rnft.transfer" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new RestrictedTokenTool(networkAddressType).createTokenTransferTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"));
+            }
+            case "rnft.witness" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                String parentTokenTxId = requireString(params, "parentTokenTxId");
+                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                RestrictedTokenAction rnftAction = RestrictedTokenAction.valueOf(
+                        requireString(params, "witnessAction"));
+                yield new RestrictedTokenTool(networkAddressType).createWitnessTxn(
+                        signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
+                        requireHexBytes(params, "tokenChangePKH"),
+                        rnftAction,
+                        optionalHexBytes(params, "rabinN"),
+                        optionalHexBytes(params, "rabinS"),
+                        optionalLong(params, "rabinPadding", 0),
+                        optionalHexBytes(params, "identityTxId"),
+                        optionalHexBytes(params, "ed25519PubKey"));
+            }
+            case "rnft.burn" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new RestrictedTokenTool(networkAddressType).createBurnTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+            case "rnft.redeem" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new RestrictedTokenTool(networkAddressType).createRedeemTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+
+            // ── RFT ──
+            case "rft.mint" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                yield new RestrictedFungibleTokenTool(networkAddressType).createFungibleMintTxn(
+                        fundingTx, signer, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireHexBytes(params, "witnessFundingTxId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"),
+                        requireLong(params, "amount"),
+                        optionalHexBytes(params, "metadataBytes"));
+            }
+            case "rft.transfer" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createRftTransferTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"),
+                        requireLong(params, "amount"),
+                        optionalInt(params, "prevTripletBaseIndex", 1));
+            }
+            case "rft.split" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
+                Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createRftSplitTxn(
+                        prevWitnessTx, prevTokenTx, pubKey,
+                        requireAddress(params, "recipientAddress", networkAddressType),
+                        requireLong(params, "sendAmount"),
+                        fundingTx, signer, pubKey,
+                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        requireHexBytes(params, "changeWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"),
+                        requireLong(params, "totalAmount"),
+                        optionalInt(params, "prevTripletBaseIndex", 1));
+            }
+            case "rft.merge" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction prevWitnessTxA = resolveTransaction(lookup, requireString(params, "prevWitnessTxIdA"));
+                Transaction prevTokenTxA = resolveTransaction(lookup, requireString(params, "prevTokenTxIdA"));
+                Transaction prevWitnessTxB = resolveTransaction(lookup, requireString(params, "prevWitnessTxIdB"));
+                Transaction prevTokenTxB = resolveTransaction(lookup, requireString(params, "prevTokenTxIdB"));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createRftMergeTxn(
+                        prevWitnessTxA, prevTokenTxA, prevWitnessTxB, prevTokenTxB,
+                        pubKey, signer, fundingTx, signer, pubKey,
+                        requireHexBytes(params, "mergedWitnessFundingTxId"),
+                        requireHexBytes(params, "tokenId"),
+                        requireHexBytes(params, "rabinPKH"),
+                        requireInt(params, "flags"),
+                        requireLong(params, "totalAmount"),
+                        optionalInt(params, "prevTripletBaseIndexA", 1),
+                        optionalInt(params, "prevTripletBaseIndexB", 1));
+            }
+            case "rft.witness" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                String parentTokenTxId = requireString(params, "parentTokenTxId");
+                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                RestrictedFungibleTokenAction rftAction = RestrictedFungibleTokenAction.valueOf(
+                        requireString(params, "witnessAction"));
+                String parentTokenTxIdB = optionalString(params, "parentTokenTxIdB");
+                byte[] parentTokenTxBytesB = parentTokenTxIdB != null
+                        ? Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxIdB)) : null;
+                RabinKeyPair rabinKeyPair = new RabinKeyPair(
+                        new BigInteger(requireString(params, "rabinKeyN")),
+                        new BigInteger(requireString(params, "rabinKeyP")),
+                        new BigInteger(requireString(params, "rabinKeyQ")));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createRftWitnessTxn(
+                        signer, pubKey, fundingTx, tokenTx, pubKey,
+                        requireHexBytes(params, "tokenChangePKH"),
+                        rftAction, parentTokenTxBytes,
+                        requireInt(params, "parentOutputCount"),
+                        optionalInt(params, "tripletBaseIndex", 1),
+                        optionalInt(params, "parentPP1FtIndex", 1),
+                        rabinKeyPair,
+                        optionalHexBytes(params, "identityTxId"),
+                        optionalHexBytes(params, "ed25519PubKey"),
+                        parentTokenTxBytesB,
+                        optionalInt(params, "parentOutputCountB", 0),
+                        optionalInt(params, "parentPP1FtIndexB", 0),
+                        optionalLong(params, "recipientAmount", 0),
+                        optionalLong(params, "tokenChangeAmount", 0),
+                        optionalHexBytes(params, "recipientPKH"));
+            }
+            case "rft.burn" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createBurnTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+            case "rft.redeem" -> {
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                yield new RestrictedFungibleTokenTool(networkAddressType).createRedeemTokenTxn(
+                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+            }
+
+            default -> throw new IllegalArgumentException("Action '" + action + "' not implemented");
         };
     }
 

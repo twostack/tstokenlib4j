@@ -14,12 +14,11 @@ import org.twostack.bitcoin4j.transaction.Transaction;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.crypto.RabinSignature;
-import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
+import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.TokenAction;
 
 import java.math.BigInteger;
 import java.util.Arrays;
-import java.util.Optional;
 
 import static org.junit.Assert.*;
 
@@ -73,6 +72,8 @@ public class TokenToolTest {
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        PP1TemplateRegistrar.registerAll();
+
         // Keys
         bobPrivateKey = PrivateKey.fromWIF(BOB_WIF);
         bobPub = bobPrivateKey.getPublicKey();
@@ -218,13 +219,11 @@ public class TokenToolTest {
     public void testIssuanceTokenIdMatchesFundingTxId() throws Exception {
         Transaction issuanceTx = issueNftToBob();
 
-        // Parse the PP1 output (index 1) to extract the tokenId
+        // Extract tokenId from the PP1 output (index 1) at bytes 22-53
         Script pp1Script = issuanceTx.getOutputs().get(1).getScript();
-        Optional<PP1TokenScriptParser.TokenScriptInfo> infoOpt = PP1TokenScriptParser.parse(pp1Script);
+        assertNotNull("PP1 script should be parseable", pp1Script);
 
-        assertTrue("PP1 script should be parseable", infoOpt.isPresent());
-
-        byte[] tokenId = infoOpt.get().tokenId();
+        byte[] tokenId = Arrays.copyOfRange(pp1Script.getProgram(), 22, 54);
         byte[] fundingTxId = bobFundingTx.getTransactionIdBytes();
 
         assertArrayEquals("TokenId should match funding transaction's txid",

@@ -9,11 +9,11 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
+import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.AppendableTokenAction;
 
 import java.math.BigInteger;
-import java.util.Optional;
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
@@ -58,6 +58,8 @@ public class AppendableTokenToolTest {
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        PP1TemplateRegistrar.registerAll();
+
         bobPrivateKey = PrivateKey.fromWIF(BOB_WIF);
         bobPub = bobPrivateKey.getPublicKey();
         bobAddress = Address.fromKey(NetworkAddressType.TEST_PKH, bobPub);
@@ -158,11 +160,9 @@ public class AppendableTokenToolTest {
         Transaction issuanceTx = issueAtToBob();
 
         Script pp1Script = issuanceTx.getOutputs().get(1).getScript();
-        Optional<PP1TokenScriptParser.TokenScriptInfo> infoOpt = PP1TokenScriptParser.parse(pp1Script);
+        assertNotNull("PP1 AT script should be parseable", pp1Script);
 
-        assertTrue("PP1 AT script should be parseable", infoOpt.isPresent());
-
-        byte[] tokenId = infoOpt.get().tokenId();
+        byte[] tokenId = Arrays.copyOfRange(pp1Script.getProgram(), 22, 54);
         byte[] fundingTxId = bobFundingTx.getTransactionIdBytes();
 
         assertArrayEquals("TokenId should match funding transaction's txid",

@@ -90,6 +90,15 @@ final class PluginParamExtractor {
         return Integer.parseInt(val.toString());
     }
 
+    static boolean requireBoolean(Map<String, Object> params, String key) {
+        Object val = params.get(key);
+        if (val == null) {
+            throw new IllegalArgumentException("Missing required param '" + key + "'");
+        }
+        if (val instanceof Boolean b) return b;
+        return Boolean.parseBoolean(val.toString());
+    }
+
     static Address requireAddress(Map<String, Object> params, String key, NetworkAddressType nat) {
         String addr = requireString(params, key);
         NetworkType networkType = (nat == NetworkAddressType.MAIN_PKH)

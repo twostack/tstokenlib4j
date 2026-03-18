@@ -9,12 +9,12 @@ import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
-import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
+import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.StateMachineAction;
 
 import java.math.BigInteger;
 import java.security.MessageDigest;
-import java.util.Optional;
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
@@ -60,6 +60,8 @@ public class StateMachineToolTest {
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        PP1TemplateRegistrar.registerAll();
+
         // Merchant (Bob) keys
         merchantPrivateKey = PrivateKey.fromWIF(BOB_WIF);
         merchantPub = merchantPrivateKey.getPublicKey();
@@ -175,11 +177,9 @@ public class StateMachineToolTest {
         Transaction issuanceTx = issueSmToken();
 
         Script pp1Script = issuanceTx.getOutputs().get(1).getScript();
-        Optional<PP1TokenScriptParser.TokenScriptInfo> infoOpt = PP1TokenScriptParser.parse(pp1Script);
+        assertNotNull("PP1_SM script should be parseable", pp1Script);
 
-        assertTrue("PP1_SM script should be parseable", infoOpt.isPresent());
-
-        byte[] tokenId = infoOpt.get().tokenId();
+        byte[] tokenId = Arrays.copyOfRange(pp1Script.getProgram(), 22, 54);
         byte[] fundingTxId = merchantFundingTx.getTransactionIdBytes();
 
         assertArrayEquals("TokenId should match funding transaction's txid",

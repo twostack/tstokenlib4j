@@ -8,15 +8,16 @@ import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Sha256Hash;
 import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
+import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
-import org.twostack.tstokenlib4j.parser.PP1TokenScriptParser;
+import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.RestrictedFungibleTokenAction;
 
 import java.math.BigInteger;
-import java.util.Optional;
+import java.util.Arrays;
 
 import static org.junit.Assert.*;
 
@@ -62,6 +63,8 @@ public class RestrictedFungibleTokenToolTest {
 
     @BeforeClass
     public static void setUpClass() throws Exception {
+        PP1TemplateRegistrar.registerAll();
+
         // Keys
         bobPrivateKey = PrivateKey.fromWIF(BOB_WIF);
         bobPub = bobPrivateKey.getPublicKey();
@@ -166,15 +169,15 @@ public class RestrictedFungibleTokenToolTest {
                 1000,
                 null);
 
-        // Parse PP1_RFT output script to extract tokenId
-        Optional<PP1TokenScriptParser.TokenScriptInfo> info =
-                PP1TokenScriptParser.parse(mintTx.getOutputs().get(1).getScript());
+        // Extract tokenId from PP1_RFT output script at bytes 22-53
+        Script pp1Script = mintTx.getOutputs().get(1).getScript();
+        assertNotNull("PP1_RFT script should be parseable", pp1Script);
 
-        assertTrue("PP1_RFT script should be parseable", info.isPresent());
+        byte[] tokenId = Arrays.copyOfRange(pp1Script.getProgram(), 22, 54);
 
         // tokenId should match the funding tx id
         assertArrayEquals("tokenId should be funding tx hash",
-                bobFundingTx.getTransactionIdBytes(), info.get().tokenId());
+                bobFundingTx.getTransactionIdBytes(), tokenId);
     }
 
     // -------------------------------------------------------------------------

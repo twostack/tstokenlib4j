@@ -93,7 +93,7 @@ src/main/java/org/twostack/tstokenlib4j/
 ├── encoding/     # AmountEncoder, PushdataEncoder, ScriptNumberEncoder
 ├── lock/         # 12 locking script (scriptPubKey) builders
 ├── unlock/       # 11 unlocking script (scriptSig) builders + 6 action enums
-├── parser/       # PP1TokenScriptParser — extracts ownerPKH/tokenId from PP1* scripts
+├── parser/       # PP1 ScriptTemplate implementations + PP1TemplateRegistrar for ScriptTemplateRegistry
 ├── crypto/       # Rabin signature utilities (sign, verify, key generation)
 └── template/     # TemplateLoader + TemplateDescriptor — JSON template loading/caching
 
