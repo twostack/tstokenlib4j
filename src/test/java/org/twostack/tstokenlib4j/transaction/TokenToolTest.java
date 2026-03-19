@@ -7,7 +7,9 @@ import org.twostack.bitcoin4j.PrivateKey;
 import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Sha256Hash;
 import org.twostack.bitcoin4j.Utils;
+import org.twostack.bitcoin4j.Coin;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
+import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
@@ -19,6 +21,8 @@ import org.twostack.tstokenlib4j.unlock.TokenAction;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.LinkedList;
 
 import static org.junit.Assert.*;
 
@@ -422,5 +426,59 @@ public class TokenToolTest {
 
         assertArrayEquals("Metadata script should be forwarded identically across transfers",
                 issuanceMetadataScript, transferMetadataScript);
+    }
+
+    // ──── Clean stack verification for transfer witness PP1 ────────────
+
+    @Test
+    public void testTransferWitnessPP1CleanStack() throws Exception {
+        // Issue → witness → transfer → transfer witness, then verify PP1 clean stack
+        // Issue WITHOUT metadata (matching Dart test setup — OP_FALSE OP_RETURN only)
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                bobFundingTx, 1, bobSigningCallback(), bobPub, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, new byte[0]);
+
+        Transaction witness1 = createWitness(
+                bobSigningCallback(), bobPub,
+                aliceFundingTx, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE);
+
+        Transaction aliceFunding2 = Transaction.fromHex(ALICE_FUNDING_TX_HEX);
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        Transaction transferTx = tokenTool.createTokenTransferTxn(
+                witness1, issuanceTx, bobPub, aliceAddress,
+                aliceFunding2, 1, bobSigningCallback(), bobPub,
+                aliceFunding2.getTransactionIdBytes(), tokenId, rabinPubKeyHash);
+
+        // Transfer witness (Alice witnesses her received token)
+        // tokenChangePKH must be the PKH of the change output in the transfer TX,
+        // which is the PREVIOUS owner (Bob) who built the transfer.
+        Transaction bobFunding2 = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+        Transaction transferWitness = createWitness(
+                aliceSigningCallback(), alicePub,
+                bobFunding2, transferTx, issuanceTx.serialize(),
+                alicePub, bobAddress.getHash(), TokenAction.TRANSFER);
+
+        // Verify PP1 input (input[1]) passes consensus and leaves clean stack
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+
+        Script scriptSig = transferWitness.getInputs().get(1).getScriptSig();
+        Script scriptPubKey = transferTx.getOutputs().get(1).getScript();
+        long pp1Sats = transferTx.getOutputs().get(1).getAmount().longValue();
+
+        Interpreter interp = new Interpreter();
+        interp.correctlySpends(scriptSig, scriptPubKey, transferWitness, 1,
+                flags, Coin.valueOf(pp1Sats));
+
+        // Verify clean stack
+        LinkedList<byte[]> stack = new LinkedList<>();
+        Interpreter.executeScript(transferWitness, 1, scriptSig, stack,
+                Coin.valueOf(pp1Sats), flags);
+        Interpreter.executeScript(transferWitness, 1, scriptPubKey, stack,
+                Coin.valueOf(pp1Sats), flags);
+        assertEquals("PP1 NFT transfer witness must leave clean stack", 1, stack.size());
     }
 }
