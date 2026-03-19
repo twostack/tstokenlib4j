@@ -57,7 +57,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             "sm.create", "sm.enroll", "sm.transition", "sm.settle", "sm.timeout", "sm.witness", "sm.burn",
             "rnft.issue", "rnft.transfer", "rnft.witness", "rnft.burn", "rnft.redeem",
             "rft.mint", "rft.transfer", "rft.split", "rft.merge", "rft.witness", "rft.burn", "rft.redeem",
-            "funding.prepare");
+            "funding.provision");
 
     private final NetworkAddressType networkAddressType;
 
@@ -179,6 +179,26 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         } catch (Exception e) {
             throw new RuntimeException("Failed to build transaction for action '" + action + "': " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public java.util.List<org.twostack.libspiffy4j.plugin.ProvisionedTransaction> provisionFunding(
+            PluginTransactionRequest request) {
+        Map<String, Object> params = request.params();
+        SigningCallback signer = sighash -> request.signer().sign(sighash, 0);
+        PublicKey pubKey = PublicKey.fromHex(request.publicKeyHexes().get(0));
+
+        int fundingVout = resolveFundingVout(params, request);
+        Transaction fundingTx = lookupTransaction(
+                request.transactionLookup() != null ? request.transactionLookup() : txid -> null,
+                params, "fundingTxId", request);
+        Address changeAddress = requireAddress(params, "changeAddress", networkAddressType);
+        int lifecycleSteps = optionalInt(params, "lifecycleSteps", 1);
+        long feeRateSatsPerKb = optionalLong(params, "feeRateSatsPerKb", 100);
+
+        return FundingProvisionBuilder.provision(
+                fundingTx, fundingVout, signer, pubKey, signer, pubKey,
+                changeAddress, lifecycleSteps, feeRateSatsPerKb);
     }
 
     @Override
@@ -690,51 +710,6 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 yield new RestrictedFungibleTokenTool(networkAddressType).createRedeemTokenTxn(
                         tokenTx, signer, pubKey, fundingTx, signer, pubKey);
-            }
-
-            // ── Funding preparation ──
-            case "funding.prepare" -> {
-                int fundingVout = resolveFundingVout(params, request);
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                Address changeAddr = requireAddress(params, "changeAddress", networkAddressType);
-                int witnessSlotCount = optionalInt(params, "witnessSlotCount", 1);
-                long witnessSlotSats = optionalLong(params, "witnessSlotSats", 2000);
-
-                org.twostack.bitcoin4j.transaction.TransactionSigner txSigner =
-                        SignerAdapter.fromCallback(signer, pubKey,
-                                org.twostack.bitcoin4j.transaction.SigHashType.FORKID.value
-                                | org.twostack.bitcoin4j.transaction.SigHashType.ALL.value);
-                org.twostack.bitcoin4j.transaction.P2PKHUnlockBuilder fundingUnlocker =
-                        new org.twostack.bitcoin4j.transaction.P2PKHUnlockBuilder(pubKey);
-
-                org.twostack.bitcoin4j.transaction.TransactionBuilder builder =
-                        new org.twostack.bitcoin4j.transaction.TransactionBuilder();
-                builder.spendFromTransaction(txSigner, fundingTx, fundingVout,
-                        org.twostack.bitcoin4j.transaction.TransactionInput.MAX_SEQ_NUMBER,
-                        fundingUnlocker);
-                builder.withFeePerKb(1);
-
-                // Layout: output[0] = change, output[1..N] = witness funding slots.
-                // PP1 hardcodes vout=1 for witness funding, so output[1] is the critical slot.
-                // We can't use sendChangeTo (appends last), so compute change manually.
-                long inputSats = fundingTx.getOutputs().get(fundingVout).getAmount().longValue();
-                long totalWitnessSats = witnessSlotSats * witnessSlotCount;
-                long estimatedFee = 300; // conservative for a 1-in, N+1-out P2PKH tx
-                long changeSats = inputSats - totalWitnessSats - estimatedFee;
-                if (changeSats < 546) {
-                    throw new IllegalArgumentException(
-                            "Insufficient funds: input=" + inputSats + " witness=" + totalWitnessSats
-                            + " fee=" + estimatedFee + " change=" + changeSats);
-                }
-
-                org.twostack.bitcoin4j.transaction.P2PKHLockBuilder changeLock =
-                        new org.twostack.bitcoin4j.transaction.P2PKHLockBuilder(changeAddr);
-                builder.spendTo(changeLock, BigInteger.valueOf(changeSats));
-                for (int slot = 0; slot < witnessSlotCount; slot++) {
-                    builder.spendTo(changeLock, BigInteger.valueOf(witnessSlotSats));
-                }
-
-                yield builder.build(false);
             }
 
             default -> throw new IllegalArgumentException("Action '" + action + "' not implemented");

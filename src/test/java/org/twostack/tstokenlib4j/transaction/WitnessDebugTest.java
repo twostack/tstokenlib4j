@@ -227,10 +227,12 @@ public class WitnessDebugTest {
 
         Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
-        // Issuance: fund from vout=1, commit witness funding at vout=0
+        // Issuance: fund from vout=1, commit witness funding txid (32 bytes, not outpoint)
+        // createTokenIssuanceTxn calls getOutpoint() internally, so we pass the raw txid.
+        // This test verifies that PP1 fails when witness funding is at vout=0.
         Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
                 fundingTx, 1, bobSigner, bobPub, bobAddress,
-                tokenTool.getOutpoint(fundingTx.getTransactionIdBytes(), 0), // 36-byte outpoint with vout=0
+                fundingTx.getTransactionIdBytes(),
                 rabinPubKeyHash, "test".getBytes());
 
         System.out.println("=== VOUT=0 TEST ===");
