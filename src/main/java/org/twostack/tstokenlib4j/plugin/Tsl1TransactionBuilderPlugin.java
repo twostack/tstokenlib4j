@@ -56,7 +56,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             "at.issue", "at.transfer", "at.stamp", "at.witness", "at.burn", "at.redeem",
             "sm.create", "sm.enroll", "sm.transition", "sm.settle", "sm.timeout", "sm.witness", "sm.burn",
             "rnft.issue", "rnft.transfer", "rnft.witness", "rnft.burn", "rnft.redeem",
-            "rft.mint", "rft.transfer", "rft.split", "rft.merge", "rft.witness", "rft.burn", "rft.redeem");
+            "rft.mint", "rft.transfer", "rft.split", "rft.merge", "rft.witness", "rft.burn", "rft.redeem",
+            "funding.prepare");
 
     private final NetworkAddressType networkAddressType;
 
@@ -691,6 +692,51 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         tokenTx, signer, pubKey, fundingTx, signer, pubKey);
             }
 
+            // ── Funding preparation ──
+            case "funding.prepare" -> {
+                int fundingVout = resolveFundingVout(params, request);
+                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                Address changeAddr = requireAddress(params, "changeAddress", networkAddressType);
+                int witnessSlotCount = optionalInt(params, "witnessSlotCount", 1);
+                long witnessSlotSats = optionalLong(params, "witnessSlotSats", 2000);
+
+                org.twostack.bitcoin4j.transaction.TransactionSigner txSigner =
+                        SignerAdapter.fromCallback(signer, pubKey,
+                                org.twostack.bitcoin4j.transaction.SigHashType.FORKID.value
+                                | org.twostack.bitcoin4j.transaction.SigHashType.ALL.value);
+                org.twostack.bitcoin4j.transaction.P2PKHUnlockBuilder fundingUnlocker =
+                        new org.twostack.bitcoin4j.transaction.P2PKHUnlockBuilder(pubKey);
+
+                org.twostack.bitcoin4j.transaction.TransactionBuilder builder =
+                        new org.twostack.bitcoin4j.transaction.TransactionBuilder();
+                builder.spendFromTransaction(txSigner, fundingTx, fundingVout,
+                        org.twostack.bitcoin4j.transaction.TransactionInput.MAX_SEQ_NUMBER,
+                        fundingUnlocker);
+                builder.withFeePerKb(1);
+
+                // Layout: output[0] = change, output[1..N] = witness funding slots.
+                // PP1 hardcodes vout=1 for witness funding, so output[1] is the critical slot.
+                // We can't use sendChangeTo (appends last), so compute change manually.
+                long inputSats = fundingTx.getOutputs().get(fundingVout).getAmount().longValue();
+                long totalWitnessSats = witnessSlotSats * witnessSlotCount;
+                long estimatedFee = 300; // conservative for a 1-in, N+1-out P2PKH tx
+                long changeSats = inputSats - totalWitnessSats - estimatedFee;
+                if (changeSats < 546) {
+                    throw new IllegalArgumentException(
+                            "Insufficient funds: input=" + inputSats + " witness=" + totalWitnessSats
+                            + " fee=" + estimatedFee + " change=" + changeSats);
+                }
+
+                org.twostack.bitcoin4j.transaction.P2PKHLockBuilder changeLock =
+                        new org.twostack.bitcoin4j.transaction.P2PKHLockBuilder(changeAddr);
+                builder.spendTo(changeLock, BigInteger.valueOf(changeSats));
+                for (int slot = 0; slot < witnessSlotCount; slot++) {
+                    builder.spendTo(changeLock, BigInteger.valueOf(witnessSlotSats));
+                }
+
+                yield builder.build(false);
+            }
+
             default -> throw new IllegalArgumentException("Action '" + action + "' not implemented");
         };
     }
@@ -705,6 +751,9 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
      * Resolve the funding output index. Uses the first funding UTXO's vout.
      */
     private int resolveFundingVout(Map<String, Object> params, PluginTransactionRequest request) {
+        // Explicit override takes priority (e.g., witness must use vout=1)
+        Integer explicit = optionalInt(params, "fundingVout", -1);
+        if (explicit >= 0) return explicit;
         if (!request.fundingUtxos().isEmpty()) {
             return request.fundingUtxos().get(0).vout();
         }
@@ -756,6 +805,9 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
     }
 
     private int expectedOutputCount(String action) {
+        if (action.equals("funding.prepare")) {
+            return -1; // variable: 1 change + N witness slots
+        }
         if (action.endsWith(".witness") || action.endsWith(".burn") || action.endsWith(".redeem")) {
             return 1;
         }

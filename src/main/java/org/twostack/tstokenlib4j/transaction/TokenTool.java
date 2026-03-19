@@ -191,7 +191,9 @@ public class TokenTool {
         // Output 1: PP1 NFT
         tokenTxBuilder.spendTo(new PP1NftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash), BigInteger.ONE);
 
-        // Output 2: PP2
+        // Output 2: PP2 — witnessFundingTxId must be a 32-byte txid in internal byte order.
+        // PP1 hardcodes vout=1 for hashPrevouts reconstruction, so the witness funding UTXO
+        // must always be at vout=1.
         tokenTxBuilder.spendTo(new PP2LockBuilder(getOutpoint(witnessFundingTxId), recipientPKH, 1, recipientPKH), BigInteger.ONE);
 
         // Output 3: PartialWitness

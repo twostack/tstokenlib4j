@@ -5,6 +5,7 @@ import org.twostack.bitcoin4j.*;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
+import org.twostack.bitcoin4j.script.ScriptTraceCallback;
 import org.twostack.bitcoin4j.transaction.Transaction;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
@@ -13,6 +14,7 @@ import org.twostack.tstokenlib4j.unlock.TokenAction;
 
 import java.math.BigInteger;
 import java.util.EnumSet;
+import java.util.LinkedList;
 
 public class WitnessDebugTest {
 
@@ -72,9 +74,13 @@ public class WitnessDebugTest {
                     + " sats, script len=" + witnessTx.getOutputs().get(i).getScript().getProgram().length);
         }
 
-        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+        EnumSet<Script.VerifyFlag> consensusFlags = EnumSet.of(
                 Script.VerifyFlag.SIGHASH_FORKID,
                 Script.VerifyFlag.UTXO_AFTER_GENESIS);
+        EnumSet<Script.VerifyFlag> policyFlags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS,
+                Script.VerifyFlag.MINIMALDATA);
         Interpreter interp = new Interpreter();
 
         for (int i = 0; i < witnessTx.getInputs().size(); i++) {
@@ -93,10 +99,17 @@ public class WitnessDebugTest {
 
             try {
                 interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
-                        witnessTx, i, flags, Coin.valueOf(parentOutput.getAmount().longValue()));
-                System.out.println("  RESULT: PASS");
+                        witnessTx, i, consensusFlags, Coin.valueOf(parentOutput.getAmount().longValue()));
+                System.out.println("  CONSENSUS: PASS");
             } catch (Exception e) {
-                System.out.println("  RESULT: FAIL — " + e.getMessage());
+                System.out.println("  CONSENSUS: FAIL — " + e.getMessage());
+            }
+            try {
+                interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
+                        witnessTx, i, policyFlags, Coin.valueOf(parentOutput.getAmount().longValue()));
+                System.out.println("  POLICY:    PASS");
+            } catch (Exception e) {
+                System.out.println("  POLICY:    FAIL — " + e.getMessage());
             }
         }
     }
@@ -181,6 +194,189 @@ public class WitnessDebugTest {
                 System.out.println("  RESULT: PASS");
             } catch (Exception e) {
                 System.out.println("  RESULT: FAIL — " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Test witness funded at vout=0 instead of vout=1 to verify if PP1 hardcodes the vout.
+     */
+    @Test
+    public void witnessWithFundingAtVout0() throws Exception {
+        TokenTool tokenTool = new TokenTool(NetworkAddressType.TEST_PKH);
+
+        PrivateKey bobPriv = PrivateKey.fromWIF(BOB_WIF);
+        PublicKey bobPub = bobPriv.getPublicKey();
+        Address bobAddress = Address.fromKey(NetworkAddressType.TEST_PKH, bobPub);
+        SigningCallback bobSigner = sighash -> bobPriv.sign(sighash);
+
+        RabinKeyPair rabinKeyPair = Rabin.generateKeyPair(1024);
+        byte[] rabinNBytes = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        byte[] rabinPubKeyHash = Rabin.rabinPubKeyHash(rabinKeyPair.n());
+
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+        for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
+
+        byte[] messageBytes = new byte[64];
+        System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
+        System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
+        RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+        byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
+
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        // Issuance: fund from vout=1, commit witness funding at vout=0
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                fundingTx, 1, bobSigner, bobPub, bobAddress,
+                tokenTool.getOutpoint(fundingTx.getTransactionIdBytes(), 0), // 36-byte outpoint with vout=0
+                rabinPubKeyHash, "test".getBytes());
+
+        System.out.println("=== VOUT=0 TEST ===");
+        System.out.println("Issuance txid: " + issuanceTx.getTransactionId());
+
+        // Witness: fund from vout=0 (the other output of fundingTx)
+        Transaction witnessTx = tokenTool.createWitnessTxn(
+                bobSigner, bobPub, fundingTx, 0, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE,
+                rabinNBytes, rabinSBytes, (long) rabinSig.padding(),
+                identityTxId, ed25519PubKey);
+
+        System.out.println("Witness txid: " + witnessTx.getTransactionId());
+
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+        Interpreter interp = new Interpreter();
+
+        for (int i = 0; i < witnessTx.getInputs().size(); i++) {
+            var input = witnessTx.getInputs().get(i);
+            String prevTxid = Utils.HEX.encode(input.getPrevTxnId());
+            int prevVout = (int) input.getPrevTxnOutputIndex();
+
+            Transaction parentTx = prevTxid.equals(issuanceTx.getTransactionId()) ? issuanceTx : fundingTx;
+            var parentOutput = parentTx.getOutputs().get(prevVout);
+            String parentLabel = parentTx == issuanceTx ? "ISSUANCE" : "FUNDING";
+
+            System.out.println("\nINPUT[" + i + "] spends " + parentLabel + "[" + prevVout + "]:");
+            System.out.println("  value=" + parentOutput.getAmount().longValue() + " sats");
+
+            try {
+                interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
+                        witnessTx, i, flags, Coin.valueOf(parentOutput.getAmount().longValue()));
+                System.out.println("  RESULT: PASS");
+            } catch (Exception e) {
+                System.out.println("  RESULT: FAIL — " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Trace PP1 execution with MINIMALDATA to find the exact opcode that triggers
+     * "non-minimally encoded script number".
+     */
+    @Test
+    public void traceMinimalDataFailure() throws Exception {
+        TokenTool tokenTool = new TokenTool(NetworkAddressType.TEST_PKH);
+
+        PrivateKey bobPriv = PrivateKey.fromWIF(BOB_WIF);
+        PublicKey bobPub = bobPriv.getPublicKey();
+        Address bobAddress = Address.fromKey(NetworkAddressType.TEST_PKH, bobPub);
+        SigningCallback bobSigner = sighash -> bobPriv.sign(sighash);
+
+        RabinKeyPair rabinKeyPair = Rabin.generateKeyPair(1024);
+        byte[] rabinNBytes = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        byte[] rabinPubKeyHash = Rabin.rabinPubKeyHash(rabinKeyPair.n());
+
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+        for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
+
+        byte[] messageBytes = new byte[64];
+        System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
+        System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
+        RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+        byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
+
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                fundingTx, 1, bobSigner, bobPub, bobAddress,
+                fundingTx.getTransactionIdBytes(), rabinPubKeyHash, "test".getBytes());
+
+        Transaction witnessTx = tokenTool.createWitnessTxn(
+                bobSigner, bobPub, fundingTx, 1, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE,
+                rabinNBytes, rabinSBytes, (long) rabinSig.padding(),
+                identityTxId, ed25519PubKey);
+
+        // Trace PP1 (input[1]) execution with MINIMALDATA
+        var input = witnessTx.getInputs().get(1);
+        Script scriptSig = input.getScriptSig();
+        Script scriptPubKey = issuanceTx.getOutputs().get(1).getScript();
+
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS,
+                Script.VerifyFlag.MINIMALDATA);
+
+        // Track the last N opcodes before failure
+        final int WINDOW = 20;
+        final String[][] recentOps = new String[WINDOW][1];
+        final int[] opCounter = {0};
+
+        ScriptTraceCallback tracer = (pc, opcode, opName, stack, altStack) -> {
+            int idx = opCounter[0] % WINDOW;
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.format("op#%d @%d 0x%02x %-12s stack=%d [", opCounter[0], pc, opcode, opName, stack.size()));
+            int show = Math.min(stack.size(), 3);
+            var it = stack.descendingIterator();
+            for (int s = 0; s < show && it.hasNext(); s++) {
+                byte[] item = it.next();
+                if (s > 0) sb.append(" | ");
+                if (item.length == 0) sb.append("(empty)");
+                else if (item.length <= 40) sb.append(Utils.HEX.encode(item));
+                else sb.append(item.length).append("B");
+            }
+            sb.append("]");
+            recentOps[idx][0] = sb.toString();
+            opCounter[0]++;
+        };
+
+        LinkedList<byte[]> stack = new LinkedList<>();
+
+        System.out.println("=== Executing scriptSig ===");
+        try {
+            Interpreter.executeScript(witnessTx, 1, scriptSig, stack, Coin.valueOf(1), flags, null, tracer);
+            System.out.println("scriptSig OK, stack size=" + stack.size());
+        } catch (Exception e) {
+            System.out.println("scriptSig FAILED: " + e.getMessage());
+            printRecentOps(recentOps, opCounter[0], WINDOW);
+            return;
+        }
+
+        System.out.println("\n=== Executing scriptPubKey (len=" + scriptPubKey.getProgram().length + ") ===");
+        // Dump bytes around where we expect the failure (~position 346)
+        byte[] spk = scriptPubKey.getProgram();
+        System.out.println("  bytes @340-360: " + Utils.HEX.encode(java.util.Arrays.copyOfRange(spk, 340, Math.min(360, spk.length))));
+
+        try {
+            Interpreter.executeScript(witnessTx, 1, scriptPubKey, stack, Coin.valueOf(1), flags, null, tracer);
+            System.out.println("scriptPubKey OK, stack size=" + stack.size());
+        } catch (Exception e) {
+            System.out.println("scriptPubKey FAILED at op#" + opCounter[0] + ": " + e.getMessage());
+            printRecentOps(recentOps, opCounter[0], WINDOW);
+        }
+    }
+
+    private void printRecentOps(String[][] recentOps, int total, int window) {
+        System.out.println("Last " + Math.min(total, window) + " opcodes before failure:");
+        int start = Math.max(0, total - window);
+        for (int j = start; j < total; j++) {
+            int idx = j % window;
+            if (recentOps[idx][0] != null) {
+                System.out.println("  " + recentOps[idx][0]);
             }
         }
     }
