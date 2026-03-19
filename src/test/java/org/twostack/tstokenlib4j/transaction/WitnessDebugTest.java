@@ -370,6 +370,197 @@ public class WitnessDebugTest {
         }
     }
 
+    /**
+     * Full lifecycle: issuance → witness → transfer.
+     * Verifies every transfer input in the interpreter.
+     */
+    @Test
+    public void transferVerification() throws Exception {
+        TokenTool tokenTool = new TokenTool(NetworkAddressType.TEST_PKH);
+
+        PrivateKey bobPriv = PrivateKey.fromWIF(BOB_WIF);
+        PublicKey bobPub = bobPriv.getPublicKey();
+        Address bobAddress = Address.fromKey(NetworkAddressType.TEST_PKH, bobPub);
+        SigningCallback bobSigner = sighash -> bobPriv.sign(sighash);
+
+        RabinKeyPair rabinKeyPair = Rabin.generateKeyPair(1024);
+        byte[] rabinNBytes = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        byte[] rabinPubKeyHash = Rabin.rabinPubKeyHash(rabinKeyPair.n());
+
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+        for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
+
+        byte[] messageBytes = new byte[64];
+        System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
+        System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
+        RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+        byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
+
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        // --- Step 1: Issuance ---
+        // Fund from vout=1, commit witness funding to fundingTx (vout=1 is the PP1 hardcode)
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                fundingTx, 1, bobSigner, bobPub, bobAddress,
+                fundingTx.getTransactionIdBytes(), rabinPubKeyHash,
+                "test".getBytes());
+
+        System.out.println("=== TRANSFER LIFECYCLE TEST ===");
+        System.out.println("Issuance txid: " + issuanceTx.getTransactionId());
+
+        // --- Step 2: Witness ---
+        Transaction witnessTx = tokenTool.createWitnessTxn(
+                bobSigner, bobPub, fundingTx, 1, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE,
+                rabinNBytes, rabinSBytes, (long) rabinSig.padding(),
+                identityTxId, ed25519PubKey);
+
+        System.out.println("Witness txid: " + witnessTx.getTransactionId());
+
+        // --- Step 3: Transfer ---
+        // PP3 hardcodes funding at vout=1, so the transfer's funding UTXO must be at vout=1.
+        // In a real flow, funding.prepare creates UTXOs at vout=1.
+        // For this test, we reuse fundingTx:vout=1 (same as issuance/witness) since
+        // we're verifying script correctness, not UTXO spending.
+        int transferFundingVout = 1;
+        Transaction transferTx = tokenTool.createTokenTransferTxn(
+                witnessTx, issuanceTx,
+                bobPub, bobAddress,
+                fundingTx, transferFundingVout,
+                bobSigner, bobPub,
+                fundingTx.getTransactionIdBytes(),  // recipient witness funding
+                issuanceTx.getTransactionIdBytes(),  // tokenId = issuance txid
+                rabinPubKeyHash);
+
+        System.out.println("Transfer txid: " + transferTx.getTransactionId());
+        System.out.println("Transfer inputs: " + transferTx.getInputs().size());
+        System.out.println("Transfer outputs: " + transferTx.getOutputs().size());
+
+        // Verify each transfer input
+        EnumSet<Script.VerifyFlag> consensusFlags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+        EnumSet<Script.VerifyFlag> policyFlags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS,
+                Script.VerifyFlag.MINIMALDATA);
+        Interpreter interp = new Interpreter();
+
+        for (int i = 0; i < transferTx.getInputs().size(); i++) {
+            var input = transferTx.getInputs().get(i);
+            String prevTxid = Utils.HEX.encode(input.getPrevTxnId());
+            int prevVout = (int) input.getPrevTxnOutputIndex();
+
+            // Resolve parent transaction
+            Transaction parentTx;
+            String parentLabel;
+            if (prevTxid.equals(issuanceTx.getTransactionId())) {
+                parentTx = issuanceTx;
+                parentLabel = "ISSUANCE";
+            } else if (prevTxid.equals(witnessTx.getTransactionId())) {
+                parentTx = witnessTx;
+                parentLabel = "WITNESS";
+            } else if (prevTxid.equals(fundingTx.getTransactionId())) {
+                parentTx = fundingTx;
+                parentLabel = "FUNDING";
+            } else {
+                System.out.println("INPUT[" + i + "]: UNKNOWN parent tx " + prevTxid);
+                continue;
+            }
+
+            var parentOutput = parentTx.getOutputs().get(prevVout);
+            System.out.println("\nINPUT[" + i + "] spends " + parentLabel + "[" + prevVout + "]:");
+            System.out.println("  scriptSig len=" + input.getScriptSig().getProgram().length);
+            System.out.println("  scriptPubKey len=" + parentOutput.getScript().getProgram().length);
+            System.out.println("  value=" + parentOutput.getAmount().longValue() + " sats");
+
+            try {
+                interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
+                        transferTx, i, consensusFlags, Coin.valueOf(parentOutput.getAmount().longValue()));
+                System.out.println("  CONSENSUS: PASS");
+            } catch (Exception e) {
+                System.out.println("  CONSENSUS: FAIL — " + e.getMessage());
+            }
+            try {
+                interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
+                        transferTx, i, policyFlags, Coin.valueOf(parentOutput.getAmount().longValue()));
+                System.out.println("  POLICY:    PASS");
+            } catch (Exception e) {
+                System.out.println("  POLICY:    FAIL — " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Proves PP3 hardcodes vout=1 for the transfer funding outpoint.
+     * Transfer funding at vout=0 causes PP3 hashPrevOuts mismatch.
+     */
+    @Test
+    public void transferWithFundingAtVout0() throws Exception {
+        TokenTool tokenTool = new TokenTool(NetworkAddressType.TEST_PKH);
+
+        PrivateKey bobPriv = PrivateKey.fromWIF(BOB_WIF);
+        PublicKey bobPub = bobPriv.getPublicKey();
+        Address bobAddress = Address.fromKey(NetworkAddressType.TEST_PKH, bobPub);
+        SigningCallback bobSigner = sighash -> bobPriv.sign(sighash);
+
+        RabinKeyPair rabinKeyPair = Rabin.generateKeyPair(1024);
+        byte[] rabinNBytes = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        byte[] rabinPubKeyHash = Rabin.rabinPubKeyHash(rabinKeyPair.n());
+
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+        for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
+
+        byte[] messageBytes = new byte[64];
+        System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
+        System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
+        RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+        byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
+
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                fundingTx, 1, bobSigner, bobPub, bobAddress,
+                fundingTx.getTransactionIdBytes(), rabinPubKeyHash, "test".getBytes());
+
+        Transaction witnessTx = tokenTool.createWitnessTxn(
+                bobSigner, bobPub, fundingTx, 1, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE,
+                rabinNBytes, rabinSBytes, (long) rabinSig.padding(),
+                identityTxId, ed25519PubKey);
+
+        // Transfer with funding at vout=0 — PP3 expects vout=1, so INPUT[2] should FAIL
+        Transaction transferTx = tokenTool.createTokenTransferTxn(
+                witnessTx, issuanceTx, bobPub, bobAddress,
+                fundingTx, 0, bobSigner, bobPub,
+                fundingTx.getTransactionIdBytes(),
+                issuanceTx.getTransactionIdBytes(), rabinPubKeyHash);
+
+        System.out.println("=== TRANSFER FUNDING VOUT=0 (should fail PP3) ===");
+
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+        Interpreter interp = new Interpreter();
+
+        // Only check INPUT[2] (PP3)
+        var input = transferTx.getInputs().get(2);
+        var parentOutput = issuanceTx.getOutputs().get(3);
+        try {
+            interp.correctlySpends(input.getScriptSig(), parentOutput.getScript(),
+                    transferTx, 2, flags, Coin.valueOf(1));
+            System.out.println("PP3: PASS (unexpected!)");
+            throw new AssertionError("PP3 should fail with funding at vout=0");
+        } catch (org.twostack.bitcoin4j.script.ScriptException e) {
+            System.out.println("PP3: FAIL as expected — " + e.getMessage());
+            assert e.getMessage().contains("non-equal data") : "Expected hash mismatch, got: " + e.getMessage();
+        }
+    }
+
     private void printRecentOps(String[][] recentOps, int total, int window) {
         System.out.println("Last " + Math.min(total, window) + " opcodes before failure:");
         int start = Math.max(0, total - window);
