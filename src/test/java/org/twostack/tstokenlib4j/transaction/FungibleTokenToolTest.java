@@ -7,7 +7,9 @@ import org.twostack.bitcoin4j.PrivateKey;
 import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.exception.InvalidKeyException;
+import org.twostack.bitcoin4j.Coin;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
+import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
@@ -16,6 +18,8 @@ import org.twostack.tstokenlib4j.unlock.FungibleTokenAction;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.LinkedList;
 
 import static org.junit.Assert.*;
 
@@ -438,5 +442,91 @@ public class FungibleTokenToolTest {
         assertEquals("Merge should produce 5 outputs", 5, mergeTx.getOutputs().size());
         assertEquals("Merge should have 5 inputs (funding + witnessA + witnessB + PP3_A + PP3_B)",
                 5, mergeTx.getInputs().size());
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. Transfer witness PP1 clean stack + interpreter verification
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void testTransferWitnessPP1CleanStack() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+
+        // Step 1: Mint 1000 tokens
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx,
+                bobSigningCallback(),
+                bobPubKey,
+                bobAddress,
+                bobFundingTx.getTransactionIdBytes(),
+                1000,
+                null);
+
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        // Step 2: Mint witness
+        Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(),
+                bobPubKey,
+                bobFundingTx,
+                mintTx,
+                bobPubKey,
+                bobAddress.getHash(),
+                FungibleTokenAction.MINT,
+                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+
+        // Step 3: Transfer to Alice
+        Transaction transferFundingTx = getBobFundingTx();
+        Transaction aliceFundingTx = getAliceFundingTx();
+
+        Transaction transferTx = tool.createFungibleTransferTxn(
+                mintWitnessTx,
+                mintTx,
+                bobPubKey,
+                aliceAddress,
+                transferFundingTx,
+                bobSigningCallback(),
+                bobPubKey,
+                aliceFundingTx.getTransactionIdBytes(),
+                tokenId,
+                1000,
+                1);
+
+        // Step 4: Transfer witness
+        // tokenChangePKH must be the PREVIOUS owner's PKH (Bob built the transfer)
+        Transaction witnessAfterTransferFunding = getBobFundingTx();
+        Transaction transferWitness = tool.createFungibleWitnessTxn(
+                aliceSigningCallback(),
+                alicePubKey,
+                witnessAfterTransferFunding,
+                transferTx,
+                alicePubKey,
+                bobAddress.getHash(),
+                FungibleTokenAction.TRANSFER,
+                mintTx.serialize(),
+                5,
+                1,
+                null, 0, 1, 0, 0, 0, null);
+
+        // Verify PP1 input (input[1]) passes consensus and leaves clean stack
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+
+        Script scriptSig = transferWitness.getInputs().get(1).getScriptSig();
+        Script scriptPubKey = transferTx.getOutputs().get(1).getScript();
+        long pp1Sats = transferTx.getOutputs().get(1).getAmount().longValue();
+
+        Interpreter interp = new Interpreter();
+        interp.correctlySpends(scriptSig, scriptPubKey, transferWitness, 1,
+                flags, Coin.valueOf(pp1Sats));
+
+        // Verify clean stack
+        LinkedList<byte[]> stack = new LinkedList<>();
+        Interpreter.executeScript(transferWitness, 1, scriptSig, stack,
+                Coin.valueOf(pp1Sats), flags);
+        Interpreter.executeScript(transferWitness, 1, scriptPubKey, stack,
+                Coin.valueOf(pp1Sats), flags);
+        assertEquals("PP1 FT transfer witness must leave clean stack", 1, stack.size());
     }
 }
