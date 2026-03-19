@@ -219,12 +219,13 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                                        PluginTransactionRequest request,
                                        SigningCallback signer, PublicKey pubKey) throws Exception {
         TransactionLookup lookup = request.transactionLookup();
+        long feePerKb = optionalLong(params, "feeRateSatsPerKb", 1);
 
         return switch (action) {
             case "nft.issue" -> {
                 int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                yield new TokenTool(networkAddressType).createTokenIssuanceTxn(
+                yield new TokenTool(networkAddressType, null, feePerKb).createTokenIssuanceTxn(
                         fundingTx, fundingVout, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         requireHexBytes(params, "witnessFundingTxId"),
@@ -239,7 +240,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 String ownerPubKeyHex = optionalString(params, "ownerPubKeyHex");
                 PublicKey ownerPubKey = ownerPubKeyHex != null
                         ? PublicKey.fromHex(ownerPubKeyHex) : pubKey;
-                yield new TokenTool(networkAddressType).createTokenTransferTxn(
+                yield new TokenTool(networkAddressType, null, feePerKb).createTokenTransferTxn(
                         prevWitnessTx, prevTokenTx, ownerPubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, fundingVout, signer, pubKey,
@@ -265,7 +266,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 String ownerPubKeyHex = optionalString(params, "ownerPubKeyHex");
                 PublicKey ownerPubKey = ownerPubKeyHex != null
                         ? PublicKey.fromHex(ownerPubKeyHex) : pubKey;
-                yield new TokenTool(networkAddressType).createWitnessTxn(
+                yield new TokenTool(networkAddressType, null, feePerKb).createWitnessTxn(
                         signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, ownerPubKey,
                         requireHexBytes(params, "tokenChangePKH"), tokenAction,
                         optionalHexBytes(params, "rabinN"),
@@ -277,7 +278,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             case "nft.burn" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
-                yield new TokenTool(networkAddressType).createBurnTokenTxn(
+                yield new TokenTool(networkAddressType, null, feePerKb).createBurnTokenTxn(
                         tokenTx, signer, pubKey, fundingTx, signer, pubKey);
             }
             // ── FT ──

@@ -32,16 +32,22 @@ public class TokenTool {
 
     private final NetworkAddressType networkAddressType;
     private final BigInteger defaultFee;
+    private final long feePerKb;
     private final int sigHashAll;
 
-    public TokenTool(NetworkAddressType networkAddressType, BigInteger defaultFee) {
+    public TokenTool(NetworkAddressType networkAddressType, BigInteger defaultFee, long feePerKb) {
         this.networkAddressType = networkAddressType;
         this.defaultFee = defaultFee != null ? defaultFee : BigInteger.valueOf(135);
+        this.feePerKb = feePerKb;
         this.sigHashAll = SigHashType.FORKID.value | SigHashType.ALL.value;
     }
 
+    public TokenTool(NetworkAddressType networkAddressType, BigInteger defaultFee) {
+        this(networkAddressType, defaultFee, 1);
+    }
+
     public TokenTool(NetworkAddressType networkAddressType) {
-        this(networkAddressType, null);
+        this(networkAddressType, null, 1);
     }
 
     /**
@@ -186,7 +192,7 @@ public class TokenTool {
 
         tokenTxBuilder.spendFromTransaction(signer, tokenFundingTx, fundingOutputIndex,
                 TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker);
-        tokenTxBuilder.withFeePerKb(1);
+        tokenTxBuilder.withFeePerKb(feePerKb);
 
         // Output 1: PP1 NFT
         tokenTxBuilder.spendTo(new PP1NftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash), BigInteger.ONE);
@@ -259,6 +265,7 @@ public class TokenTool {
                 .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .withFeePerKb(feePerKb)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -280,6 +287,7 @@ public class TokenTool {
                 .spendFromTransaction(signer, fundingTx, fundingOutputIndex, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
+                .withFeePerKb(feePerKb)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -319,6 +327,7 @@ public class TokenTool {
                 .spendFromTransaction(ownerSgn, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1NftUnlockBuilder.forBurn(ownerPubkey))
                 .spendFromTransaction(ownerSgn, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
                 .spendFromTransaction(ownerSgn, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
+                .withFeePerKb(feePerKb)
                 .sendChangeTo(ownerAddress)
                 .build(false);
     }
