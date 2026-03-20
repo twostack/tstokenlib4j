@@ -28,29 +28,35 @@ public class PP1FtLockBuilder extends LockingScriptBuilder {
 
     private final byte[] ownerPKH;
     private final byte[] tokenId;
+    private final byte[] rabinPubKeyHash;
     private final long amount;
 
     /**
      * Creates a new PP1 FT lock builder.
      *
-     * @param ownerPKH the HASH160 of the token owner's public key (must be exactly 20 bytes)
-     * @param tokenId  the unique 256-bit token identifier (must be exactly 32 bytes)
-     * @param amount   the fungible token amount; must be &gt;= 0 and &lt; 2<sup>55</sup>
+     * @param ownerPKH        the HASH160 of the token owner's public key (must be exactly 20 bytes)
+     * @param tokenId         the unique 256-bit token identifier (must be exactly 32 bytes)
+     * @param rabinPubKeyHash the HASH160 of the Rabin oracle's public key (must be exactly 20 bytes)
+     * @param amount          the fungible token amount; must be &gt;= 0 and &lt; 2<sup>55</sup>
      * @throws IllegalArgumentException if any parameter is null, has an incorrect length,
      *                                  or {@code amount} is out of range
      */
-    public PP1FtLockBuilder(byte[] ownerPKH, byte[] tokenId, long amount) {
+    public PP1FtLockBuilder(byte[] ownerPKH, byte[] tokenId, byte[] rabinPubKeyHash, long amount) {
         if (ownerPKH == null || ownerPKH.length != 20) {
             throw new IllegalArgumentException("ownerPKH must be 20 bytes");
         }
         if (tokenId == null || tokenId.length != 32) {
             throw new IllegalArgumentException("tokenId must be 32 bytes");
         }
+        if (rabinPubKeyHash == null || rabinPubKeyHash.length != 20) {
+            throw new IllegalArgumentException("rabinPubKeyHash must be 20 bytes");
+        }
         if (amount < 0 || amount >= (1L << 55)) {
             throw new IllegalArgumentException("amount must be >= 0 and < 2^55");
         }
         this.ownerPKH = ownerPKH.clone();
         this.tokenId = tokenId.clone();
+        this.rabinPubKeyHash = rabinPubKeyHash.clone();
         this.amount = amount;
     }
 
@@ -67,6 +73,7 @@ public class PP1FtLockBuilder extends LockingScriptBuilder {
         String hex = td.getHex();
         hex = hex.replace("{{ownerPKH}}", Utils.HEX.encode(ownerPKH));
         hex = hex.replace("{{tokenId}}", Utils.HEX.encode(tokenId));
+        hex = hex.replace("{{rabinPubKeyHash}}", Utils.HEX.encode(rabinPubKeyHash));
         hex = hex.replace("{{amount}}", Utils.HEX.encode(AmountEncoder.encodeLeUint56(amount)));
         return Script.fromByteArray(Utils.HEX.decode(hex));
     }
@@ -79,6 +86,11 @@ public class PP1FtLockBuilder extends LockingScriptBuilder {
     /** @return a defensive copy of the token identifier (32 bytes) */
     public byte[] getTokenId() {
         return tokenId.clone();
+    }
+
+    /** @return a defensive copy of the Rabin oracle public-key hash (20 bytes) */
+    public byte[] getRabinPubKeyHash() {
+        return rabinPubKeyHash.clone();
     }
 
     /** @return the fungible token amount */

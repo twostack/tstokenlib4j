@@ -34,6 +34,7 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
     private final byte[] tokenId;
     private final byte[] merchantPKH;
     private final byte[] customerPKH;
+    private final byte[] rabinPubKeyHash;
     private final int currentState;
     private final int milestoneCount;
     private final byte[] commitmentHash;
@@ -56,6 +57,7 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
      */
     public PP1SmLockBuilder(byte[] ownerPKH, byte[] tokenId,
                             byte[] merchantPKH, byte[] customerPKH,
+                            byte[] rabinPubKeyHash,
                             int currentState, int milestoneCount,
                             byte[] commitmentHash, int transitionBitmask,
                             int timeoutDelta) {
@@ -71,6 +73,9 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
         if (customerPKH == null || customerPKH.length != 20) {
             throw new IllegalArgumentException("customerPKH must be 20 bytes");
         }
+        if (rabinPubKeyHash == null || rabinPubKeyHash.length != 20) {
+            throw new IllegalArgumentException("rabinPubKeyHash must be 20 bytes");
+        }
         if (commitmentHash == null || commitmentHash.length != 32) {
             throw new IllegalArgumentException("commitmentHash must be 32 bytes");
         }
@@ -78,6 +83,7 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
         this.tokenId = tokenId.clone();
         this.merchantPKH = merchantPKH.clone();
         this.customerPKH = customerPKH.clone();
+        this.rabinPubKeyHash = rabinPubKeyHash.clone();
         this.currentState = currentState;
         this.milestoneCount = milestoneCount;
         this.commitmentHash = commitmentHash.clone();
@@ -102,6 +108,7 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
         hex = hex.replace("{{tokenId}}", Utils.HEX.encode(tokenId));
         hex = hex.replace("{{merchantPKH}}", Utils.HEX.encode(merchantPKH));
         hex = hex.replace("{{customerPKH}}", Utils.HEX.encode(customerPKH));
+        hex = hex.replace("{{rabinPubKeyHash}}", Utils.HEX.encode(rabinPubKeyHash));
         hex = hex.replace("{{currentState}}", encodeHexByte(currentState));
         hex = hex.replace("{{milestoneCount}}", encodeHexByte(milestoneCount));
         hex = hex.replace("{{commitmentHash}}", Utils.HEX.encode(commitmentHash));
@@ -128,6 +135,8 @@ public class PP1SmLockBuilder extends LockingScriptBuilder {
     public byte[] getMerchantPKH() { return merchantPKH.clone(); }
     /** @return a defensive copy of the customer's public-key hash (20 bytes) */
     public byte[] getCustomerPKH() { return customerPKH.clone(); }
+    /** @return a defensive copy of the Rabin oracle public-key hash (20 bytes) */
+    public byte[] getRabinPubKeyHash() { return rabinPubKeyHash.clone(); }
     /** @return the current state index */
     public int getCurrentState() { return currentState; }
     /** @return the total milestone count */

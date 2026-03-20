@@ -31,6 +31,7 @@ public class PP1AtLockBuilder extends LockingScriptBuilder {
     private final byte[] ownerPKH;
     private final byte[] tokenId;
     private final byte[] issuerPKH;
+    private final byte[] rabinPubKeyHash;
     private final int stampCount;
     private final int threshold;
     private final byte[] stampsHash;
@@ -38,15 +39,17 @@ public class PP1AtLockBuilder extends LockingScriptBuilder {
     /**
      * Creates a new PP1 appendable token lock builder.
      *
-     * @param ownerPKH   the HASH160 of the token owner's public key (must be exactly 20 bytes)
-     * @param tokenId    the unique 256-bit token identifier (must be exactly 32 bytes)
-     * @param issuerPKH  the HASH160 of the issuer's public key (must be exactly 20 bytes)
-     * @param stampCount the current number of stamps accumulated on this token
-     * @param threshold  the stamp threshold required to gate an action
-     * @param stampsHash a 256-bit hash of all accumulated stamps (must be exactly 32 bytes)
+     * @param ownerPKH        the HASH160 of the token owner's public key (must be exactly 20 bytes)
+     * @param tokenId         the unique 256-bit token identifier (must be exactly 32 bytes)
+     * @param issuerPKH       the HASH160 of the issuer's public key (must be exactly 20 bytes)
+     * @param rabinPubKeyHash the HASH160 of the Rabin oracle's public key (must be exactly 20 bytes)
+     * @param stampCount      the current number of stamps accumulated on this token
+     * @param threshold       the stamp threshold required to gate an action
+     * @param stampsHash      a 256-bit hash of all accumulated stamps (must be exactly 32 bytes)
      * @throws IllegalArgumentException if any byte-array parameter is null or has an incorrect length
      */
     public PP1AtLockBuilder(byte[] ownerPKH, byte[] tokenId, byte[] issuerPKH,
+                            byte[] rabinPubKeyHash,
                             int stampCount, int threshold, byte[] stampsHash) {
         if (ownerPKH == null || ownerPKH.length != 20) {
             throw new IllegalArgumentException("ownerPKH must be 20 bytes");
@@ -57,12 +60,16 @@ public class PP1AtLockBuilder extends LockingScriptBuilder {
         if (issuerPKH == null || issuerPKH.length != 20) {
             throw new IllegalArgumentException("issuerPKH must be 20 bytes");
         }
+        if (rabinPubKeyHash == null || rabinPubKeyHash.length != 20) {
+            throw new IllegalArgumentException("rabinPubKeyHash must be 20 bytes");
+        }
         if (stampsHash == null || stampsHash.length != 32) {
             throw new IllegalArgumentException("stampsHash must be 32 bytes");
         }
         this.ownerPKH = ownerPKH.clone();
         this.tokenId = tokenId.clone();
         this.issuerPKH = issuerPKH.clone();
+        this.rabinPubKeyHash = rabinPubKeyHash.clone();
         this.stampCount = stampCount;
         this.threshold = threshold;
         this.stampsHash = stampsHash.clone();
@@ -83,6 +90,7 @@ public class PP1AtLockBuilder extends LockingScriptBuilder {
         hex = hex.replace("{{ownerPKH}}", Utils.HEX.encode(ownerPKH));
         hex = hex.replace("{{tokenId}}", Utils.HEX.encode(tokenId));
         hex = hex.replace("{{issuerPKH}}", Utils.HEX.encode(issuerPKH));
+        hex = hex.replace("{{rabinPubKeyHash}}", Utils.HEX.encode(rabinPubKeyHash));
         hex = hex.replace("{{stampCount}}", encodeLeUint32(stampCount));
         hex = hex.replace("{{threshold}}", encodeLeUint32(threshold));
         hex = hex.replace("{{stampsHash}}", Utils.HEX.encode(stampsHash));
@@ -101,6 +109,8 @@ public class PP1AtLockBuilder extends LockingScriptBuilder {
     public byte[] getTokenId() { return tokenId.clone(); }
     /** @return a defensive copy of the issuer's public-key hash (20 bytes) */
     public byte[] getIssuerPKH() { return issuerPKH.clone(); }
+    /** @return a defensive copy of the Rabin oracle public-key hash (20 bytes) */
+    public byte[] getRabinPubKeyHash() { return rabinPubKeyHash.clone(); }
     /** @return the current stamp count */
     public int getStampCount() { return stampCount; }
     /** @return the stamp threshold */

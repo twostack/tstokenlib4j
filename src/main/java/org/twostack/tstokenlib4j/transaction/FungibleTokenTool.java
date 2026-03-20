@@ -86,6 +86,7 @@ public class FungibleTokenTool {
             PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
+            byte[] rabinPubKeyHash,
             long amount,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
@@ -102,7 +103,7 @@ public class FungibleTokenTool {
         tokenTxBuilder.withFeePerKb(1);
 
         // Output 1: PP1_FT (fungible token state)
-        tokenTxBuilder.spendTo(new PP1FtLockBuilder(recipientPKH, tokenId, amount), BigInteger.ONE);
+        tokenTxBuilder.spendTo(new PP1FtLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, amount), BigInteger.ONE);
 
         // Output 2: PP2-FT (witness bridge)
         tokenTxBuilder.spendTo(new PP2FtLockBuilder(
