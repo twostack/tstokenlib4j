@@ -13,7 +13,6 @@ import org.twostack.libspiffy4j.plugin.*;
 import org.twostack.tstokenlib4j.lock.*;
 import org.twostack.tstokenlib4j.parser.*;
 import org.twostack.tstokenlib4j.transaction.*;
-import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.unlock.*;
 
 import java.math.BigInteger;
@@ -685,10 +684,6 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 String parentTokenTxIdB = optionalString(params, "parentTokenTxIdB");
                 byte[] parentTokenTxBytesB = parentTokenTxIdB != null
                         ? Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxIdB)) : null;
-                RabinKeyPair rabinKeyPair = new RabinKeyPair(
-                        new BigInteger(requireString(params, "rabinKeyN")),
-                        new BigInteger(requireString(params, "rabinKeyP")),
-                        new BigInteger(requireString(params, "rabinKeyQ")));
                 yield new RestrictedFungibleTokenTool(networkAddressType).createRftWitnessTxn(
                         signer, pubKey, fundingTx, tokenTx, pubKey,
                         requireHexBytes(params, "tokenChangePKH"),
@@ -696,7 +691,9 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireInt(params, "parentOutputCount"),
                         optionalInt(params, "tripletBaseIndex", 1),
                         optionalInt(params, "parentPP1FtIndex", 1),
-                        rabinKeyPair,
+                        optionalHexBytes(params, "rabinN"),
+                        optionalHexBytes(params, "rabinS"),
+                        optionalInt(params, "rabinPadding", 0),
                         optionalHexBytes(params, "identityTxId"),
                         optionalHexBytes(params, "ed25519PubKey"),
                         parentTokenTxBytesB,

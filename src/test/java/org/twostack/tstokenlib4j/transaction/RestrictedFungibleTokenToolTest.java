@@ -13,6 +13,7 @@ import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
+import org.twostack.tstokenlib4j.crypto.RabinSignature;
 import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.RestrictedFungibleTokenAction;
 
@@ -95,6 +96,27 @@ public class RestrictedFungibleTokenToolTest {
 
         // RestrictedFungibleTokenTool
         tool = new RestrictedFungibleTokenTool(NetworkAddressType.TEST_PKH);
+    }
+
+    /**
+     * Pre-compute Rabin signature for a given tokenId.
+     * Message = sha256(identityTxId || ed25519PubKey || tokenId)
+     */
+    private static RabinSignature computeRabinSig(byte[] tokenId) {
+        byte[] concat = new byte[dummyIdentityTxId.length + dummyEd25519PubKey.length + tokenId.length];
+        System.arraycopy(dummyIdentityTxId, 0, concat, 0, dummyIdentityTxId.length);
+        System.arraycopy(dummyEd25519PubKey, 0, concat, dummyIdentityTxId.length, dummyEd25519PubKey.length);
+        System.arraycopy(tokenId, 0, concat, dummyIdentityTxId.length + dummyEd25519PubKey.length, tokenId.length);
+        java.math.BigInteger messageHash = Rabin.hashBytesToScriptInt(sha256(concat));
+        return Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+    }
+
+    private static byte[] sha256(byte[] data) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256").digest(data);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // --- Helper methods ---
@@ -211,7 +233,9 @@ public class RestrictedFungibleTokenToolTest {
                 0,     // parentOutputCount
                 1,     // tripletBaseIndex
                 0,     // parentPP1FtIndex
-                rabinKeyPair,
+                rabinNBytes,
+                Rabin.bigIntToScriptNum(computeRabinSig(bobFundingTx.getTransactionIdBytes()).s()),
+                computeRabinSig(bobFundingTx.getTransactionIdBytes()).padding(),
                 dummyIdentityTxId,
                 dummyEd25519PubKey,
                 null,  // parentTokenTxBytesB
@@ -256,7 +280,10 @@ public class RestrictedFungibleTokenToolTest {
                 bobAddress.getHash(),
                 RestrictedFungibleTokenAction.MINT,
                 null, 0, 1, 0,
-                rabinKeyPair, dummyIdentityTxId, dummyEd25519PubKey,
+                rabinNBytes,
+                Rabin.bigIntToScriptNum(computeRabinSig(bobFundingTx.getTransactionIdBytes()).s()),
+                computeRabinSig(bobFundingTx.getTransactionIdBytes()).padding(),
+                dummyIdentityTxId, dummyEd25519PubKey,
                 null, 0, 0, 0, 0, null);
 
         // Step 3: Transfer to Alice
@@ -384,7 +411,10 @@ public class RestrictedFungibleTokenToolTest {
                 bobAddress.getHash(),
                 RestrictedFungibleTokenAction.MINT,
                 null, 0, 1, 0,
-                rabinKeyPair, dummyIdentityTxId, dummyEd25519PubKey,
+                rabinNBytes,
+                Rabin.bigIntToScriptNum(computeRabinSig(bobFundingTx.getTransactionIdBytes()).s()),
+                computeRabinSig(bobFundingTx.getTransactionIdBytes()).padding(),
+                dummyIdentityTxId, dummyEd25519PubKey,
                 null, 0, 0, 0, 0, null);
 
         // Split: send 300 to Alice, 700 change to Bob

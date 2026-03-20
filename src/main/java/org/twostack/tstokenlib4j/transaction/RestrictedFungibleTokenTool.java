@@ -10,8 +10,6 @@ import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.*;
 
 import org.twostack.tstokenlib4j.crypto.Rabin;
-import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
-import org.twostack.tstokenlib4j.crypto.RabinSignature;
 import org.twostack.tstokenlib4j.lock.*;
 import org.twostack.tstokenlib4j.unlock.*;
 
@@ -202,7 +200,7 @@ public class RestrictedFungibleTokenTool {
      * <p>Produces a 1-output transaction: Witness (locked to current token holder).
      * Spends PP1_RFT and PP2-FT from the token transaction.
      *
-     * <p>For MINT: {@code rabinKeyPair}, {@code identityTxId}, {@code ed25519PubKey} are required.
+     * <p>For MINT: {@code rabinN}, {@code rabinS}, {@code rabinPadding}, {@code identityTxId}, {@code ed25519PubKey} are required.
      * For TRANSFER: {@code parentTokenTxBytes} and {@code parentOutputCount} are required.
      *
      * @param fundingSigner        callback that signs sighash digests for the funding key
@@ -216,7 +214,9 @@ public class RestrictedFungibleTokenTool {
      * @param parentOutputCount    number of outputs in the parent transaction
      * @param tripletBaseIndex     base index of the token triplet (default 1)
      * @param parentPP1FtIndex     index of the PP1 FT output in the parent transaction
-     * @param rabinKeyPair         Rabin key pair for MINT signing
+     * @param rabinN               pre-computed Rabin public key N (script-number encoded) for MINT
+     * @param rabinS               pre-computed Rabin signature S (script-number encoded) for MINT
+     * @param rabinPadding         Rabin signature padding value for MINT
      * @param identityTxId         identity transaction ID for MINT
      * @param ed25519PubKey        Ed25519 public key for MINT
      * @param parentTokenTxBytesB  raw bytes of the second parent token transaction (for MERGE)
@@ -239,7 +239,9 @@ public class RestrictedFungibleTokenTool {
             int parentOutputCount,
             int tripletBaseIndex,
             int parentPP1FtIndex,
-            RabinKeyPair rabinKeyPair,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
             byte[] identityTxId,
             byte[] ed25519PubKey,
             byte[] parentTokenTxBytesB,
@@ -280,7 +282,7 @@ public class RestrictedFungibleTokenTool {
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
-                parentPP1FtIndex, rabinKeyPair, identityTxId, ed25519PubKey,
+                parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH);
 
@@ -294,7 +296,7 @@ public class RestrictedFungibleTokenTool {
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
-                parentPP1FtIndex, rabinKeyPair, identityTxId, ed25519PubKey,
+                parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH);
 
@@ -621,7 +623,9 @@ public class RestrictedFungibleTokenTool {
             int tripletBaseIndex,
             byte[] fundingTxHash,
             int parentPP1FtIndex,
-            RabinKeyPair rabinKeyPair,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
             byte[] identityTxId,
             byte[] ed25519PubKey,
             byte[] parentTokenTxBytesB,
@@ -635,25 +639,10 @@ public class RestrictedFungibleTokenTool {
         long changeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         if (action == RestrictedFungibleTokenAction.MINT) {
-            // Rabin signing: messageHash = sha256ToScriptInt(concat(identityTxId, ed25519PubKey, tokenId))
-            // tokenId binding prevents replay attacks across tokens
-            byte[] pp1Program = tokenTx.getOutputs().get(tripletBaseIndex).getScript().getProgram();
-            byte[] tokenId = new byte[32];
-            System.arraycopy(pp1Program, 22, tokenId, 0, 32);
-            byte[] concat = new byte[identityTxId.length + ed25519PubKey.length + tokenId.length];
-            System.arraycopy(identityTxId, 0, concat, 0, identityTxId.length);
-            System.arraycopy(ed25519PubKey, 0, concat, identityTxId.length, ed25519PubKey.length);
-            System.arraycopy(tokenId, 0, concat, identityTxId.length + ed25519PubKey.length, tokenId.length);
-            byte[] hashBytes = sha256(concat);
-            BigInteger messageHash = Rabin.hashBytesToScriptInt(hashBytes);
-            RabinSignature sig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
-
-            byte[] rabinN = Rabin.bigIntToScriptNum(rabinKeyPair.n());
-            byte[] rabinS = Rabin.bigIntToScriptNum(sig.s());
-
+            // Rabin signature is pre-computed by the caller. The tool never sees the private key.
             return PP1RftUnlockBuilder.forMint(
                     preImage, fundingTxHash, paddingBytes,
-                    rabinN, rabinS, sig.padding(),
+                    rabinN, rabinS, rabinPadding,
                     identityTxId, ed25519PubKey);
 
         } else if (action == RestrictedFungibleTokenAction.TRANSFER) {
