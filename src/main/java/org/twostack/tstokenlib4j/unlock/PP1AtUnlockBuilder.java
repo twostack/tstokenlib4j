@@ -43,6 +43,13 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
     private final byte[] prevTokenTx;
     private final byte[] stampMetadata;
 
+    // Rabin identity fields (ISSUANCE only)
+    private byte[] rabinN;
+    private byte[] rabinS;
+    private int rabinPadding;
+    private byte[] identityTxId;
+    private byte[] ed25519PubKey;
+
     private PP1AtUnlockBuilder(
             AppendableTokenAction action,
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
@@ -75,11 +82,19 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
      */
     public static PP1AtUnlockBuilder forIssuance(
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
-            PublicKey issuerPubKey) {
-        return new PP1AtUnlockBuilder(
+            PublicKey issuerPubKey,
+            byte[] rabinN, byte[] rabinS, int rabinPadding,
+            byte[] identityTxId, byte[] ed25519PubKey) {
+        PP1AtUnlockBuilder b = new PP1AtUnlockBuilder(
                 AppendableTokenAction.ISSUANCE,
                 preImage, witnessFundingTxId, witnessPadding,
                 null, issuerPubKey, null, 0, null, null, null);
+        b.rabinN = rabinN;
+        b.rabinS = rabinS;
+        b.rabinPadding = rabinPadding;
+        b.identityTxId = identityTxId;
+        b.ed25519PubKey = ed25519PubKey;
+        return b;
     }
 
     /**
@@ -201,6 +216,11 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
             builder.data(witnessPadding);
             builder.data(ownerPubKey.getPubKeyBytes());
             builder.data(getSignatures().get(0).toTxFormat());
+            builder.data(rabinN);
+            builder.data(rabinS);
+            builder.number(rabinPadding);
+            builder.data(identityTxId);
+            builder.data(ed25519PubKey);
             builder.number(0);
             return builder.build();
         } catch (IOException e) {

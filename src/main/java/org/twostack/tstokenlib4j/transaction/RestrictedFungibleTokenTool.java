@@ -635,10 +635,15 @@ public class RestrictedFungibleTokenTool {
         long changeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         if (action == RestrictedFungibleTokenAction.MINT) {
-            // Rabin signing: messageHash = sha256ToScriptInt(concat(identityTxId, ed25519PubKey))
-            byte[] concat = new byte[identityTxId.length + ed25519PubKey.length];
+            // Rabin signing: messageHash = sha256ToScriptInt(concat(identityTxId, ed25519PubKey, tokenId))
+            // tokenId binding prevents replay attacks across tokens
+            byte[] pp1Program = tokenTx.getOutputs().get(tripletBaseIndex).getScript().getProgram();
+            byte[] tokenId = new byte[32];
+            System.arraycopy(pp1Program, 22, tokenId, 0, 32);
+            byte[] concat = new byte[identityTxId.length + ed25519PubKey.length + tokenId.length];
             System.arraycopy(identityTxId, 0, concat, 0, identityTxId.length);
             System.arraycopy(ed25519PubKey, 0, concat, identityTxId.length, ed25519PubKey.length);
+            System.arraycopy(tokenId, 0, concat, identityTxId.length + ed25519PubKey.length, tokenId.length);
             byte[] hashBytes = sha256(concat);
             BigInteger messageHash = Rabin.hashBytesToScriptInt(hashBytes);
             RabinSignature sig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());

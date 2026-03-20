@@ -56,6 +56,13 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     // TIMEOUT extras
     private final long refundAmount;
 
+    // Rabin identity fields (CREATE only)
+    private byte[] rabinN;
+    private byte[] rabinS;
+    private int rabinPadding;
+    private byte[] identityTxId;
+    private byte[] ed25519PubKey;
+
     private PP1SmUnlockBuilder(
             StateMachineAction action,
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
@@ -93,12 +100,20 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for state machine creation
      */
     public static PP1SmUnlockBuilder forCreate(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding) {
-        return new PP1SmUnlockBuilder(
+            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] rabinN, byte[] rabinS, int rabinPadding,
+            byte[] identityTxId, byte[] ed25519PubKey) {
+        PP1SmUnlockBuilder b = new PP1SmUnlockBuilder(
                 StateMachineAction.CREATE,
                 preImage, witnessFundingTxId, witnessPadding,
                 null, null, null, 0, null, null,
                 null, null, null, 0, 0, 0);
+        b.rabinN = rabinN;
+        b.rabinS = rabinS;
+        b.rabinPadding = rabinPadding;
+        b.identityTxId = identityTxId;
+        b.ed25519PubKey = ed25519PubKey;
+        return b;
     }
 
     /**
@@ -304,6 +319,11 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
         builder.data(preImage);
         builder.data(witnessFundingTxId);
         builder.data(witnessPadding);
+        builder.data(rabinN);
+        builder.data(rabinS);
+        builder.number(rabinPadding);
+        builder.data(identityTxId);
+        builder.data(ed25519PubKey);
         builder.number(0);
         return builder.build();
     }

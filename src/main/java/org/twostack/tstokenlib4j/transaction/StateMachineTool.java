@@ -898,7 +898,9 @@ public class StateMachineTool {
 
         switch (action) {
             case CREATE:
-                return PP1SmUnlockBuilder.forCreate(preImage, fundingTxHash, paddingBytes);
+                // Rabin signing for CREATE will be added when Rabin params are plumbed through
+                return PP1SmUnlockBuilder.forCreate(preImage, fundingTxHash, paddingBytes,
+                        new byte[0], new byte[0], 0, new byte[0], new byte[0]);
             case ENROLL:
                 return PP1SmUnlockBuilder.forEnroll(
                         preImage, pp2Output, merchantPubkey,

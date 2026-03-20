@@ -492,8 +492,10 @@ public class AppendableTokenTool {
 
         switch (action) {
             case ISSUANCE:
+                // Rabin signing for ISSUANCE will be added when Rabin params are plumbed through
                 return PP1AtUnlockBuilder.forIssuance(
-                        preImage, fundingTxHash, paddingBytes, pubkey);
+                        preImage, fundingTxHash, paddingBytes, pubkey,
+                        new byte[0], new byte[0], 0, new byte[0], new byte[0]);
             case STAMP:
                 return PP1AtUnlockBuilder.forStamp(
                         preImage, pp2Output, pubkey,
