@@ -159,8 +159,13 @@ public class FungibleTokenTool {
         byte[] recipientPKH = recipientAddress.getHash();
         int prevPP3Index = prevTripletBaseIndex + 2;
 
+        // Extract rabinPubKeyHash from parent PP1 script at byte offset [55:75]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(prevTripletBaseIndex).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 55, rabinPubKeyHash, 0, 20);
+
         // Build output lockers
-        PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(recipientPKH, tokenId, amount);
+        PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, amount);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH);
@@ -253,14 +258,19 @@ public class FungibleTokenTool {
         long changeTokenAmount = totalAmount - sendAmount;
         int prevPP3Index = prevTripletBaseIndex + 2;
 
+        // Extract rabinPubKeyHash from parent PP1 script at byte offset [55:75]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(prevTripletBaseIndex).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 55, rabinPubKeyHash, 0, 20);
+
         // Recipient triplet (outputs 1,2,3)
-        PP1FtLockBuilder pp1FtRecipientLocker = new PP1FtLockBuilder(recipientPKH, tokenId, sendAmount);
+        PP1FtLockBuilder pp1FtRecipientLocker = new PP1FtLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, sendAmount);
         PP2FtLockBuilder pp2FtRecipientLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH);
 
         // Change triplet (outputs 4,5,6)
-        PP1FtLockBuilder pp1FtChangeLocker = new PP1FtLockBuilder(senderPKH, tokenId, changeTokenAmount);
+        PP1FtLockBuilder pp1FtChangeLocker = new PP1FtLockBuilder(senderPKH, tokenId, rabinPubKeyHash, changeTokenAmount);
         PP2FtLockBuilder pp2FtChangeLocker = new PP2FtLockBuilder(
                 getOutpoint(changeWitnessFundingTxId), senderPKH, 1, senderPKH, 4, 5);
         PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH);
@@ -365,8 +375,13 @@ public class FungibleTokenTool {
         int prevPP3IndexA = prevTripletBaseIndexA + 2;
         int prevPP3IndexB = prevTripletBaseIndexB + 2;
 
+        // Extract rabinPubKeyHash from parent A's PP1 script at byte offset [55:75]
+        byte[] parentPP1Bytes = prevTokenTxA.getOutputs().get(prevTripletBaseIndexA).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 55, rabinPubKeyHash, 0, 20);
+
         // Build output lockers (single merged triplet)
-        PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(ownerPKH, tokenId, totalAmount);
+        PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, totalAmount);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(mergedWitnessFundingTxId), ownerPKH, 1, ownerPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH);
@@ -559,7 +574,9 @@ public class FungibleTokenTool {
         long tokenChangeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         if (action == FungibleTokenAction.MINT) {
-            return PP1FtUnlockBuilder.forMint(preImage, fundingTxHash, paddingBytes);
+            // Rabin signing for MINT will be added when Rabin params are plumbed through
+            return PP1FtUnlockBuilder.forMint(preImage, fundingTxHash, paddingBytes,
+                    new byte[0], new byte[0], 0, new byte[0], new byte[0]);
         } else if (action == FungibleTokenAction.TRANSFER) {
             byte[] pp2Output = tokenTx.getOutputs().get(pp2Index).serialize();
             return PP1FtUnlockBuilder.forTransfer(

@@ -11,19 +11,21 @@ import java.util.List;
  *
  * <p>Layout after the 54-byte common prefix:
  * <pre>
- *   byte[54]      = 0x14 (push 20: issuerPKH)
- *   byte[55..74]  = issuerPKH
- *   byte[75]      = 0x04 (push 4: stampCount)
- *   byte[76..79]  = stampCount (LE uint32)
- *   byte[80]      = 0x04 (push 4: threshold)
- *   byte[81..84]  = threshold (LE uint32)
- *   byte[85]      = 0x20 (push 32: stampsHash)
- *   byte[86..117] = stampsHash
+ *   byte[54]       = 0x14 (push 20: issuerPKH)
+ *   byte[55..74]   = issuerPKH
+ *   byte[75]       = 0x14 (push 20: rabinPubKeyHash)
+ *   byte[76..95]   = rabinPubKeyHash
+ *   byte[96]       = 0x04 (push 4: stampCount)
+ *   byte[97..100]  = stampCount (LE uint32)
+ *   byte[101]      = 0x04 (push 4: threshold)
+ *   byte[102..105] = threshold (LE uint32)
+ *   byte[106]      = 0x20 (push 32: stampsHash)
+ *   byte[107..138] = stampsHash
  * </pre>
  */
 public class PP1AtTemplate implements ScriptTemplate {
 
-    private static final int MIN_LEN = 118; // 54 + 1+20 + 1+4 + 1+4 + 1+32
+    private static final int MIN_LEN = 139; // 54 + 1+20 + 1+20 + 1+4 + 1+4 + 1+32
 
     @Override
     public String getName() {
@@ -35,9 +37,10 @@ public class PP1AtTemplate implements ScriptTemplate {
         byte[] p = script.getProgram();
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
         return p[54] == PP1TemplateBase.PUSH_20
-                && p[75] == PP1TemplateBase.PUSH_4
-                && p[80] == PP1TemplateBase.PUSH_4
-                && p[85] == PP1TemplateBase.PUSH_32;
+                && p[75] == PP1TemplateBase.PUSH_20   // rabinPKH
+                && p[96] == PP1TemplateBase.PUSH_4    // stampCount (shifted +21)
+                && p[101] == PP1TemplateBase.PUSH_4   // threshold (shifted +21)
+                && p[106] == PP1TemplateBase.PUSH_32; // stampsHash (shifted +21)
     }
 
     @Override
@@ -60,10 +63,11 @@ public class PP1AtTemplate implements ScriptTemplate {
         return new PP1AtScriptInfo(
                 PP1TemplateBase.extractOwnerPKH(p),
                 PP1TemplateBase.extractTokenId(p),
-                PP1TemplateBase.extractBytes(p, 55, 20),
-                PP1TemplateBase.readLeUint32(p, 76),
-                PP1TemplateBase.readLeUint32(p, 81),
-                PP1TemplateBase.extractBytes(p, 86, 32)
+                PP1TemplateBase.extractBytes(p, 55, 20),  // issuerPKH
+                PP1TemplateBase.extractBytes(p, 76, 20),  // rabinPubKeyHash
+                PP1TemplateBase.readLeUint32(p, 97),       // stampCount (shifted +21)
+                PP1TemplateBase.readLeUint32(p, 102),      // threshold (shifted +21)
+                PP1TemplateBase.extractBytes(p, 107, 32)   // stampsHash (shifted +21)
         );
     }
 }

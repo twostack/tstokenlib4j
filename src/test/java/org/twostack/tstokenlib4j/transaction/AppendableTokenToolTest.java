@@ -97,6 +97,7 @@ public class AppendableTokenToolTest {
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
                 bobAddress.getHash(),
+                new byte[20], // rabinPubKeyHash (dummy for tests)
                 THRESHOLD,
                 METADATA_BYTES);
     }

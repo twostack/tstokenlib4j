@@ -80,9 +80,10 @@ public class CrossLanguageVectorTest {
         JsonNode inputs = v.get("inputs");
         byte[] ownerPKH = Utils.HEX.decode(inputs.get("ownerPKH").asText());
         byte[] tokenId = Utils.HEX.decode(inputs.get("tokenId").asText());
+        byte[] rabinPubKeyHash = Utils.HEX.decode(inputs.get("rabinPubKeyHash").asText());
         long amount = inputs.get("amount").asLong();
 
-        PP1FtLockBuilder builder = new PP1FtLockBuilder(ownerPKH, tokenId, amount);
+        PP1FtLockBuilder builder = new PP1FtLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, amount);
         assertScriptHex(v.get("expectedScriptHex").asText(), builder.getLockingScript(), "PP1_FT_LOCK");
     }
 
@@ -234,7 +235,12 @@ public class CrossLanguageVectorTest {
         PP1FtUnlockBuilder builder = PP1FtUnlockBuilder.forMint(
                 Utils.HEX.decode(inputs.get("preImage").asText()),
                 Utils.HEX.decode(inputs.get("witnessFundingTxId").asText()),
-                Utils.HEX.decode(inputs.get("witnessPadding").asText())
+                Utils.HEX.decode(inputs.get("witnessPadding").asText()),
+                Utils.HEX.decode(inputs.get("rabinN").asText()),
+                Utils.HEX.decode(inputs.get("rabinS").asText()),
+                inputs.get("rabinPadding").asInt(),
+                Utils.HEX.decode(inputs.get("identityTxId").asText()),
+                Utils.HEX.decode(inputs.get("ed25519PubKey").asText())
         );
         assertScriptHex(v.get("expectedScriptHex").asText(), builder.getUnlockingScript(), "PP1_FT_UNLOCK_MINT");
     }

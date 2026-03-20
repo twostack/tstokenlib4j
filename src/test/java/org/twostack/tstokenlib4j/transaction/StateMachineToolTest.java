@@ -107,6 +107,7 @@ public class StateMachineToolTest {
                 TRANSITION_BITMASK,
                 TIMEOUT_DELTA,
                 merchantFundingTx.getTransactionIdBytes(),
+                new byte[20], // rabinPubKeyHash (dummy for tests)
                 METADATA_BYTES);
     }
 

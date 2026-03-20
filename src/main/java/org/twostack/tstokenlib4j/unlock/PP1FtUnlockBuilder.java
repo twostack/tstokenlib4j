@@ -57,6 +57,13 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
     private final int parentOutputCountB;
     private final int parentPP1FtIndexB;
 
+    // Rabin identity fields (MINT only)
+    private byte[] rabinN;
+    private byte[] rabinS;
+    private int rabinPadding;
+    private byte[] identityTxId;
+    private byte[] ed25519PubKey;
+
     private PP1FtUnlockBuilder(
             FungibleTokenAction action,
             byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
@@ -98,14 +105,22 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for minting
      */
     public static PP1FtUnlockBuilder forMint(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding) {
-        return new PP1FtUnlockBuilder(
+            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] rabinN, byte[] rabinS, int rabinPadding,
+            byte[] identityTxId, byte[] ed25519PubKey) {
+        PP1FtUnlockBuilder b = new PP1FtUnlockBuilder(
                 FungibleTokenAction.MINT,
                 preImage, witnessFundingTxId, witnessPadding,
                 null, null, null, 0, null, null,
                 0, 0,
                 null, 0, 0, null, 0,
                 null, 0, 0);
+        b.rabinN = rabinN;
+        b.rabinS = rabinS;
+        b.rabinPadding = rabinPadding;
+        b.identityTxId = identityTxId;
+        b.ed25519PubKey = ed25519PubKey;
+        return b;
     }
 
     /**
@@ -264,6 +279,11 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
         builder.data(preImage);
         builder.data(witnessFundingTxId);
         builder.data(witnessPadding);
+        builder.data(rabinN);
+        builder.data(rabinS);
+        builder.number(rabinPadding);
+        builder.data(identityTxId);
+        builder.data(ed25519PubKey);
         builder.number(0);
         return builder.build();
     }

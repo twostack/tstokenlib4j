@@ -8,6 +8,7 @@ public class PP1SmScriptInfo extends ScriptInfo {
     private final byte[] tokenId;
     private final byte[] merchantPKH;
     private final byte[] customerPKH;
+    private final byte[] rabinPubKeyHash;
     private final int currentState;
     private final int milestoneCount;
     private final byte[] commitmentHash;
@@ -16,6 +17,7 @@ public class PP1SmScriptInfo extends ScriptInfo {
 
     public PP1SmScriptInfo(byte[] ownerPKH, byte[] tokenId,
                            byte[] merchantPKH, byte[] customerPKH,
+                           byte[] rabinPubKeyHash,
                            int currentState, int milestoneCount,
                            byte[] commitmentHash, int transitionBitmask,
                            int timeoutDelta) {
@@ -24,6 +26,7 @@ public class PP1SmScriptInfo extends ScriptInfo {
         this.tokenId = tokenId;
         this.merchantPKH = merchantPKH;
         this.customerPKH = customerPKH;
+        this.rabinPubKeyHash = rabinPubKeyHash;
         this.currentState = currentState;
         this.milestoneCount = milestoneCount;
         this.commitmentHash = commitmentHash;
@@ -35,6 +38,7 @@ public class PP1SmScriptInfo extends ScriptInfo {
     public byte[] getTokenId() { return tokenId; }
     public byte[] getMerchantPKH() { return merchantPKH; }
     public byte[] getCustomerPKH() { return customerPKH; }
+    public byte[] getRabinPubKeyHash() { return rabinPubKeyHash; }
     public int getCurrentState() { return currentState; }
     public int getMilestoneCount() { return milestoneCount; }
     public byte[] getCommitmentHash() { return commitmentHash; }

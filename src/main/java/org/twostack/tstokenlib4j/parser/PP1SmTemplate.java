@@ -15,21 +15,23 @@ import java.util.List;
  *   byte[55..74]   = merchantPKH
  *   byte[75]       = 0x14 (push 20: customerPKH)
  *   byte[76..95]   = customerPKH
- *   byte[96]       = 0x01 (push 1: currentState)
- *   byte[97]       = currentState
- *   byte[98]       = 0x01 (push 1: milestoneCount)
- *   byte[99]       = milestoneCount
- *   byte[100]      = 0x20 (push 32: commitmentHash)
- *   byte[101..132] = commitmentHash
- *   byte[133]      = 0x01 (push 1: transitionBitmask)
- *   byte[134]      = transitionBitmask
- *   byte[135]      = 0x04 (push 4: timeoutDelta)
- *   byte[136..139] = timeoutDelta (LE uint32)
+ *   byte[96]       = 0x14 (push 20: rabinPubKeyHash)
+ *   byte[97..116]  = rabinPubKeyHash
+ *   byte[117]      = 0x01 (push 1: currentState)
+ *   byte[118]      = currentState
+ *   byte[119]      = 0x01 (push 1: milestoneCount)
+ *   byte[120]      = milestoneCount
+ *   byte[121]      = 0x20 (push 32: commitmentHash)
+ *   byte[122..153] = commitmentHash
+ *   byte[154]      = 0x01 (push 1: transitionBitmask)
+ *   byte[155]      = transitionBitmask
+ *   byte[156]      = 0x04 (push 4: timeoutDelta)
+ *   byte[157..160] = timeoutDelta (LE uint32)
  * </pre>
  */
 public class PP1SmTemplate implements ScriptTemplate {
 
-    private static final int MIN_LEN = 140; // 54 + 1+20 + 1+20 + 1+1 + 1+1 + 1+32 + 1+1 + 1+4
+    private static final int MIN_LEN = 161; // 54 + 3*(1+20) + 1+1 + 1+1 + 1+32 + 1+1 + 1+4
 
     @Override
     public String getName() {
@@ -40,8 +42,10 @@ public class PP1SmTemplate implements ScriptTemplate {
     public boolean matches(Script script) {
         byte[] p = script.getProgram();
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
+        // Three consecutive 0x14 pushes (merchantPKH, customerPKH, rabinPKH)
         return p[54] == PP1TemplateBase.PUSH_20
-                && p[75] == PP1TemplateBase.PUSH_20;
+                && p[75] == PP1TemplateBase.PUSH_20
+                && p[96] == PP1TemplateBase.PUSH_20;
     }
 
     @Override
@@ -66,11 +70,12 @@ public class PP1SmTemplate implements ScriptTemplate {
                 PP1TemplateBase.extractTokenId(p),
                 PP1TemplateBase.extractBytes(p, 55, 20),   // merchantPKH
                 PP1TemplateBase.extractBytes(p, 76, 20),   // customerPKH
-                p[97] & 0xFF,                               // currentState
-                p[99] & 0xFF,                               // milestoneCount
-                PP1TemplateBase.extractBytes(p, 101, 32),  // commitmentHash
-                p[134] & 0xFF,                              // transitionBitmask
-                PP1TemplateBase.readLeUint32(p, 136)       // timeoutDelta
+                PP1TemplateBase.extractBytes(p, 97, 20),   // rabinPubKeyHash
+                p[118] & 0xFF,                              // currentState (shifted +21)
+                p[120] & 0xFF,                              // milestoneCount (shifted +21)
+                PP1TemplateBase.extractBytes(p, 122, 32),  // commitmentHash (shifted +21)
+                p[155] & 0xFF,                              // transitionBitmask (shifted +21)
+                PP1TemplateBase.readLeUint32(p, 157)       // timeoutDelta (shifted +21)
         );
     }
 }

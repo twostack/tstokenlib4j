@@ -42,14 +42,14 @@ public class Tsl1ScriptIdentificationTest {
 
     @Test
     public void identifyScript_recognizesFt() {
-        byte[] script = new PP1FtLockBuilder(TEST_PKH, TEST_TOKEN_ID, 1000)
+        byte[] script = new PP1FtLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_RABIN_PKH, 1000)
                 .getLockingScript().getProgram();
         assertThat(plugin.identifyScript(script)).isEqualTo("pp1_ft");
     }
 
     @Test
     public void identifyScript_recognizesAt() {
-        byte[] script = new PP1AtLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_ISSUER_PKH, 0, 3, TEST_STAMPS_HASH)
+        byte[] script = new PP1AtLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_ISSUER_PKH, TEST_RABIN_PKH, 0, 3, TEST_STAMPS_HASH)
                 .getLockingScript().getProgram();
         assertThat(plugin.identifyScript(script)).isEqualTo("pp1_at");
     }
@@ -57,7 +57,7 @@ public class Tsl1ScriptIdentificationTest {
     @Test
     public void identifyScript_recognizesSm() {
         byte[] script = new PP1SmLockBuilder(TEST_PKH, TEST_TOKEN_ID,
-                TEST_PKH, TEST_RABIN_PKH, 0, 3, TEST_COMMITMENT_HASH, 0x07, 600)
+                TEST_PKH, TEST_RABIN_PKH, TEST_RABIN_PKH, 0, 3, TEST_COMMITMENT_HASH, 0x07, 600)
                 .getLockingScript().getProgram();
         assertThat(plugin.identifyScript(script)).isEqualTo("pp1_sm");
     }
@@ -110,7 +110,7 @@ public class Tsl1ScriptIdentificationTest {
 
     @Test
     public void extractMetadata_ft_containsAmount() {
-        byte[] script = new PP1FtLockBuilder(TEST_PKH, TEST_TOKEN_ID, 42000)
+        byte[] script = new PP1FtLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_RABIN_PKH, 42000)
                 .getLockingScript().getProgram();
         Map<String, Object> metadata = plugin.extractMetadata(script);
 
@@ -121,7 +121,7 @@ public class Tsl1ScriptIdentificationTest {
     @Test
     public void extractMetadata_sm_containsAllFields() {
         byte[] script = new PP1SmLockBuilder(TEST_PKH, TEST_TOKEN_ID,
-                TEST_PKH, TEST_RABIN_PKH, 2, 5, TEST_COMMITMENT_HASH, 0x0F, 3600)
+                TEST_PKH, TEST_RABIN_PKH, TEST_RABIN_PKH, 2, 5, TEST_COMMITMENT_HASH, 0x0F, 3600)
                 .getLockingScript().getProgram();
         Map<String, Object> metadata = plugin.extractMetadata(script);
 

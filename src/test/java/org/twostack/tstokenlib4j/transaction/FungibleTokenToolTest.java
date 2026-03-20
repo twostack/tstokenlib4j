@@ -47,6 +47,7 @@ public class FungibleTokenToolTest {
     private Address bobAddress;
     private Address aliceAddress;
     private FungibleTokenTool tool;
+    private static final byte[] DUMMY_RABIN_PKH = new byte[20];
 
     @Before
     public void setUp() throws InvalidKeyException {
@@ -94,6 +95,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 
@@ -127,6 +129,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 5000,
                 null);
 
@@ -155,6 +158,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 
@@ -196,6 +200,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 
@@ -247,6 +252,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 
@@ -318,6 +324,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 
@@ -383,6 +390,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 600,
                 null);
 
@@ -407,6 +415,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx2.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 400,
                 null);
 
@@ -459,6 +468,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress,
                 bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
                 1000,
                 null);
 

@@ -32,11 +32,13 @@ final class ScriptInfoMetadataMapper {
             }
             case PP1FtScriptInfo ft -> {
                 putCommon(m, ft.getOwnerPKH(), ft.getTokenId(), "pp1_ft", networkAddressType);
+                m.put("rabinPKH", hex(ft.getRabinPubKeyHash()));
                 m.put("amount", ft.getAmount());
             }
             case PP1AtScriptInfo at -> {
                 putCommon(m, at.getOwnerPKH(), at.getTokenId(), "pp1_at", networkAddressType);
                 m.put("issuerPKH", hex(at.getIssuerPKH()));
+                m.put("rabinPKH", hex(at.getRabinPubKeyHash()));
                 m.put("stampCount", at.getStampCount());
                 m.put("threshold", at.getThreshold());
                 m.put("stampsHash", hex(at.getStampsHash()));
@@ -45,6 +47,7 @@ final class ScriptInfoMetadataMapper {
                 putCommon(m, sm.getOwnerPKH(), sm.getTokenId(), "pp1_sm", networkAddressType);
                 m.put("merchantPKH", hex(sm.getMerchantPKH()));
                 m.put("customerPKH", hex(sm.getCustomerPKH()));
+                m.put("rabinPKH", hex(sm.getRabinPubKeyHash()));
                 m.put("currentState", sm.getCurrentState());
                 m.put("milestoneCount", sm.getMilestoneCount());
                 m.put("commitmentHash", hex(sm.getCommitmentHash()));

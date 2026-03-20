@@ -164,6 +164,7 @@ public class AppendableTokenTool {
             Address recipientAddress,
             byte[] witnessFundingTxId,
             byte[] issuerPKH,
+            byte[] rabinPubKeyHash,
             int threshold,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
@@ -184,7 +185,7 @@ public class AppendableTokenTool {
 
         // Output 1: PP1_AT
         tokenTxBuilder.spendTo(new PP1AtLockBuilder(recipientPKH, tokenId, issuerPKH,
-                0, threshold, initialStampsHash), BigInteger.ONE);
+                rabinPubKeyHash, 0, threshold, initialStampsHash), BigInteger.ONE);
 
         // Output 2: PP2
         tokenTxBuilder.spendTo(new PP2LockBuilder(getOutpoint(witnessFundingTxId),
@@ -242,8 +243,13 @@ public class AppendableTokenTool {
         Address currentOwnerAddress = Address.fromKey(networkAddressType, currentOwnerPubkey);
         byte[] recipientPKH = recipientAddress.getHash();
 
+        // Extract rabinPubKeyHash from parent PP1_AT script at byte offset [76:96]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 76, rabinPubKeyHash, 0, 20);
+
         PP1AtLockBuilder pp1LockBuilder = new PP1AtLockBuilder(recipientPKH, tokenId,
-                issuerPKH, stampCount, threshold, stampsHash);
+                issuerPKH, rabinPubKeyHash, stampCount, threshold, stampsHash);
         PP2LockBuilder pp2Locker = new PP2LockBuilder(getOutpoint(recipientWitnessFundingTxId),
                 recipientPKH, 1, recipientPKH);
         PartialWitnessLockBuilder shaLocker = new PartialWitnessLockBuilder(recipientPKH);
@@ -345,9 +351,14 @@ public class AppendableTokenTool {
         byte[] newStampsHash = sha256.digest();
         int newStampCount = parentStampCount + 1;
 
+        // Extract rabinPubKeyHash from parent PP1_AT script at byte offset [76:96]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 76, rabinPubKeyHash, 0, 20);
+
         // Build new PP1_AT with updated stampCount and stampsHash (ownerPKH unchanged)
         PP1AtLockBuilder pp1LockBuilder = new PP1AtLockBuilder(ownerPKH, tokenId, issuerPKH,
-                newStampCount, threshold, newStampsHash);
+                rabinPubKeyHash, newStampCount, threshold, newStampsHash);
 
         PP2LockBuilder pp2Locker = new PP2LockBuilder(getOutpoint(issuerWitnessFundingTxId),
                 ownerPKH, 1, ownerPKH);

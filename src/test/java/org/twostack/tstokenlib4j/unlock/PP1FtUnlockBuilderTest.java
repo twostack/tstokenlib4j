@@ -15,12 +15,18 @@ public class PP1FtUnlockBuilderTest {
         byte[] witnessFundingTxId = new byte[32];
         byte[] witnessPadding = new byte[]{0x00};
 
-        PP1FtUnlockBuilder builder = PP1FtUnlockBuilder.forMint(preImage, witnessFundingTxId, witnessPadding);
+        byte[] rabinN = new byte[64];
+        byte[] rabinS = new byte[64];
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+
+        PP1FtUnlockBuilder builder = PP1FtUnlockBuilder.forMint(preImage, witnessFundingTxId, witnessPadding,
+                rabinN, rabinS, 0, identityTxId, ed25519PubKey);
         Script script = builder.getUnlockingScript();
         List<ScriptChunk> chunks = script.getChunks();
 
-        // 3 data pushes + OP_0 selector = 4 chunks
-        assertEquals(4, chunks.size());
+        // 8 data pushes + OP_0 selector = 9 chunks
+        assertEquals(9, chunks.size());
     }
 
     @Test

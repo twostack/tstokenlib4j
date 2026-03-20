@@ -115,15 +115,18 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                     hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"), hexBytes(p, "rabinPKH")
             ).getLockingScript().getProgram();
             case "pp1_ft" -> new PP1FtLockBuilder(
-                    hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"), toLong(p, "amount")
+                    hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"),
+                    hexBytes(p, "rabinPKH"), toLong(p, "amount")
             ).getLockingScript().getProgram();
             case "pp1_at" -> new PP1AtLockBuilder(
                     hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"), hexBytes(p, "issuerPKH"),
+                    hexBytes(p, "rabinPKH"),
                     toInt(p, "stampCount"), toInt(p, "threshold"), hexBytes(p, "stampsHash")
             ).getLockingScript().getProgram();
             case "pp1_sm" -> new PP1SmLockBuilder(
                     hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"),
                     hexBytes(p, "merchantPKH"), hexBytes(p, "customerPKH"),
+                    hexBytes(p, "rabinPKH"),
                     toInt(p, "currentState"), toInt(p, "milestoneCount"),
                     hexBytes(p, "commitmentHash"), toInt(p, "transitionBitmask"),
                     toInt(p, "timeoutDelta")
@@ -288,6 +291,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         fundingTx, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         requireHexBytes(params, "witnessFundingTxId"),
+                        requireHexBytes(params, "rabinPubKeyHash"),
                         requireLong(params, "amount"),
                         optionalHexBytes(params, "metadataBytes"));
             }
@@ -374,6 +378,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireAddress(params, "recipientAddress", networkAddressType),
                         requireHexBytes(params, "witnessFundingTxId"),
                         requireHexBytes(params, "issuerPKH"),
+                        requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "threshold"),
                         optionalHexBytes(params, "metadataBytes"));
             }
@@ -445,6 +450,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireInt(params, "transitionBitmask"),
                         requireInt(params, "timeoutDelta"),
                         requireHexBytes(params, "witnessFundingTxId"),
+                        requireHexBytes(params, "rabinPKH"),
                         optionalHexBytes(params, "metadataBytes"));
             }
             case "sm.enroll" -> {

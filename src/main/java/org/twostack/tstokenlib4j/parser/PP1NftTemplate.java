@@ -34,8 +34,9 @@ public class PP1NftTemplate implements ScriptTemplate {
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
         if (p[54] != PP1TemplateBase.PUSH_20) return false;
         // Exclude more specific archetypes
-        if (p.length >= 76 && p[75] == PP1TemplateBase.PUSH_20) return false; // SM
-        if (p.length >= 76 && p[75] == PP1TemplateBase.PUSH_4) return false;  // AT, RNFT, or RFT
+        if (p.length >= 76 && p[75] == PP1TemplateBase.PUSH_20) return false; // AT or SM (rabinPKH/customerPKH at byte 75)
+        if (p.length >= 76 && p[75] == PP1TemplateBase.PUSH_8) return false;  // FT (amount at byte 75)
+        if (p.length >= 76 && p[75] == PP1TemplateBase.PUSH_4) return false;  // RNFT or RFT (flags at byte 75)
         return true;
     }
 

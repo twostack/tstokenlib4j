@@ -11,16 +11,18 @@ import java.util.List;
  *
  * <p>Layout after the 54-byte common prefix:
  * <pre>
- *   byte[54]     = 0x08 (push 8: amount)
- *   byte[55..62] = amount (LE uint56)
+ *   byte[54]     = 0x14 (push 20: rabinPubKeyHash)
+ *   byte[55..74] = rabinPubKeyHash
+ *   byte[75]     = 0x08 (push 8: amount)
+ *   byte[76..83] = amount (LE uint56)
  * </pre>
  *
- * <p>FT is uniquely identified by having 0x08 at byte[54] — no other PP1
- * archetype starts with an 8-byte push after the common prefix.</p>
+ * <p>FT is uniquely identified by having 0x14 at byte[54] (rabinPKH) followed
+ * by 0x08 at byte[75] (amount) — this combination is unique to FT.</p>
  */
 public class PP1FtTemplate implements ScriptTemplate {
 
-    private static final int MIN_LEN = 63; // 54 + 1+8
+    private static final int MIN_LEN = 84; // 54 + 21 + 1+8
 
     @Override
     public String getName() {
@@ -31,7 +33,7 @@ public class PP1FtTemplate implements ScriptTemplate {
     public boolean matches(Script script) {
         byte[] p = script.getProgram();
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
-        return p[54] == PP1TemplateBase.PUSH_8;
+        return p[54] == PP1TemplateBase.PUSH_20 && p[75] == PP1TemplateBase.PUSH_8;
     }
 
     @Override
@@ -54,7 +56,8 @@ public class PP1FtTemplate implements ScriptTemplate {
         return new PP1FtScriptInfo(
                 PP1TemplateBase.extractOwnerPKH(p),
                 PP1TemplateBase.extractTokenId(p),
-                PP1TemplateBase.readLeUint56(p, 55)
+                PP1TemplateBase.extractBytes(p, 55, 20), // rabinPubKeyHash
+                PP1TemplateBase.readLeUint56(p, 76)       // amount (shifted from 55 to 76)
         );
     }
 }

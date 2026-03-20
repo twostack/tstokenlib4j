@@ -6,16 +6,19 @@ public class PP1FtScriptInfo extends ScriptInfo {
 
     private final byte[] ownerPKH;
     private final byte[] tokenId;
+    private final byte[] rabinPubKeyHash;
     private final long amount;
 
-    public PP1FtScriptInfo(byte[] ownerPKH, byte[] tokenId, long amount) {
+    public PP1FtScriptInfo(byte[] ownerPKH, byte[] tokenId, byte[] rabinPubKeyHash, long amount) {
         super("PP1_FT");
         this.ownerPKH = ownerPKH;
         this.tokenId = tokenId;
+        this.rabinPubKeyHash = rabinPubKeyHash;
         this.amount = amount;
     }
 
     public byte[] getOwnerPKH() { return ownerPKH; }
     public byte[] getTokenId() { return tokenId; }
+    public byte[] getRabinPubKeyHash() { return rabinPubKeyHash; }
     public long getAmount() { return amount; }
 }

@@ -98,6 +98,7 @@ public class StateMachineTool {
             int transitionBitmask,
             int timeoutDelta,
             byte[] witnessFundingTxId,
+            byte[] rabinPubKeyHash,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
@@ -115,7 +116,7 @@ public class StateMachineTool {
 
         // Output 1: PP1_SM
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                merchantPKH, tokenId, merchantPKH, customerPKH,
+                merchantPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
                 0, 0, initialCommitmentHash, transitionBitmask, timeoutDelta);
         tokenTxBuilder.spendTo(pp1Locker, BigInteger.ONE);
 
@@ -399,8 +400,13 @@ public class StateMachineTool {
         System.arraycopy(eventDigest, 0, combined, commitmentHash.length, eventDigest.length);
         byte[] newCommitHash = sha256(combined);
 
+        // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
+
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                customerPKH, tokenId, merchantPKH, customerPKH,
+                customerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
                 1, milestoneCount, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
@@ -519,8 +525,13 @@ public class StateMachineTool {
 
         int newMC = incrementMilestone ? milestoneCount + 1 : milestoneCount;
 
+        // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
+
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH,
+                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
                 newState, newMC, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
@@ -646,8 +657,13 @@ public class StateMachineTool {
         P2PKHLockBuilder custRewardLocker = new P2PKHLockBuilder(custRewardAddress);
         P2PKHLockBuilder merchPayLocker = new P2PKHLockBuilder(merchPayAddress);
 
+        // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
+
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH,
+                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
                 4, milestoneCount, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
@@ -763,8 +779,13 @@ public class StateMachineTool {
         Address merchRefundAddress = LegacyAddress.fromPubKeyHash(networkAddressType, merchantPKH);
         P2PKHLockBuilder merchRefundLocker = new P2PKHLockBuilder(merchRefundAddress);
 
+        // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
+        byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] rabinPubKeyHash = new byte[20];
+        System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
+
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH,
+                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
                 5, milestoneCount, parentCommitHash,
                 transitionBitmask, timeoutDelta);
 
