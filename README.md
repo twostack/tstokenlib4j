@@ -245,6 +245,39 @@ Funding ──►│  PP1 (token)  ──────►──│  PP1 (unlock) 
 Transfers then spend the witness output + PP3 from the token transaction to
 produce the next token transaction in the chain.
 
+## Transaction Sizes and Fees
+
+Approximate on-chain sizes for core token operations. The PP3 witness verifier
+(~49KB, containing two rounds of hand-optimized partial SHA-256) dominates the
+transaction size. The transfer witness carries the full serialized parent token
+transaction (`parentRawTx`) as required by the inductive proof — this is constant-size
+and does not grow with successive transfers.
+
+### NFT
+
+| Transaction | Size | Fee @ 1 sat/KB | Fee @ 100 sat/KB |
+|-------------|-----:|---------------:|-----------------:|
+| Issuance Tx | ~55 KB | 55 sats | 5,500 sats |
+| Issuance Witness | ~1 KB | 1 sat | 100 sats |
+| **Issuance pair** | **~56 KB** | **56 sats** | **5,600 sats** |
+| Transfer Tx | ~55 KB | 55 sats | 5,500 sats |
+| Transfer Witness | ~56 KB | 56 sats | 5,600 sats |
+| **Transfer pair** | **~111 KB** | **111 sats** | **11,100 sats** |
+
+### Fungible Token
+
+| Transaction | Size | Fee @ 1 sat/KB | Fee @ 100 sat/KB |
+|-------------|-----:|---------------:|-----------------:|
+| Mint Tx | ~61 KB | 61 sats | 6,100 sats |
+| Mint Witness | ~1 KB | 1 sat | 100 sats |
+| **Mint pair** | **~62 KB** | **62 sats** | **6,200 sats** |
+| Transfer Tx | ~61 KB | 61 sats | 6,100 sats |
+| Transfer Witness | ~62 KB | 62 sats | 6,200 sats |
+| **Transfer pair** | **~123 KB** | **123 sats** | **12,300 sats** |
+
+Sizes are approximate and vary slightly with key sizes, padding, and metadata.
+Split transactions (8 outputs with two triplets) are roughly 1.5x the transfer size.
+
 ## TSL1 Terminology
 
 | Term | Description |
