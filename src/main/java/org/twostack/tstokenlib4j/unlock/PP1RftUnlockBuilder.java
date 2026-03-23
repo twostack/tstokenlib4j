@@ -57,6 +57,11 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
     private final int parentOutputCountB;
     private final int parentPP1FtIndexB;
 
+    // Merkle whitelist fields (TRANSFER + SPLIT)
+    private final byte[] transferRecipientPKH;
+    private final byte[] merkleProof;
+    private final byte[] merkleSides;
+
     // MINT extras (Rabin identity binding)
     private final byte[] rabinN;
     private final byte[] rabinS;
@@ -75,7 +80,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] recipientPKH, int myOutputIndex,
             byte[] prevTokenTxB, int parentOutputCountB, int parentPP1FtIndexB,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
-            byte[] identityTxId, byte[] ed25519PubKey) {
+            byte[] identityTxId, byte[] ed25519PubKey,
+            byte[] transferRecipientPKH, byte[] merkleProof, byte[] merkleSides) {
         this.action = action;
         this.preImage = preImage;
         this.witnessFundingTxId = witnessFundingTxId;
@@ -101,6 +107,9 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
         this.rabinPadding = rabinPadding;
         this.identityTxId = identityTxId;
         this.ed25519PubKey = ed25519PubKey;
+        this.transferRecipientPKH = transferRecipientPKH;
+        this.merkleProof = merkleProof;
+        this.merkleSides = merkleSides;
     }
 
     /**
@@ -127,7 +136,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 0, 0,
                 null, 0, 0, null, 0,
                 null, 0, 0,
-                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
+                null, null, null);
     }
 
     /**
@@ -150,7 +160,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] preImage, byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding,
-            int parentOutputCount, int parentPP1FtIndex) {
+            int parentOutputCount, int parentPP1FtIndex,
+            byte[] transferRecipientPKH, byte[] merkleProof, byte[] merkleSides) {
         return new PP1RftUnlockBuilder(
                 RestrictedFungibleTokenAction.TRANSFER,
                 preImage, null, witnessPadding,
@@ -159,7 +170,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 parentOutputCount, parentPP1FtIndex,
                 null, 0, 0, null, 0,
                 null, 0, 0,
-                null, null, 0, null, null);
+                null, null, 0, null, null,
+                transferRecipientPKH, merkleProof, merkleSides);
     }
 
     /**
@@ -189,7 +201,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding,
             long recipientAmount, long tokenChangeAmount,
             byte[] recipientPKH, int myOutputIndex,
-            int parentOutputCount, int parentPP1FtIndex) {
+            int parentOutputCount, int parentPP1FtIndex,
+            byte[] merkleProof, byte[] merkleSides) {
         return new PP1RftUnlockBuilder(
                 RestrictedFungibleTokenAction.SPLIT_TRANSFER,
                 preImage, null, witnessPadding,
@@ -199,7 +212,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 pp2ChangeOutput, recipientAmount, tokenChangeAmount,
                 recipientPKH, myOutputIndex,
                 null, 0, 0,
-                null, null, 0, null, null);
+                null, null, 0, null, null,
+                null, merkleProof, merkleSides);
     }
 
     /**
@@ -236,7 +250,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 parentOutputCountA, parentPP1FtIndexA,
                 null, 0, 0, null, 0,
                 prevTokenTxB, parentOutputCountB, parentPP1FtIndexB,
-                null, null, 0, null, null);
+                null, null, 0, null, null,
+                null, null, null);
     }
 
     /**
@@ -254,7 +269,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 0, 0,
                 null, 0, 0, null, 0,
                 null, 0, 0,
-                null, null, 0, null, null);
+                null, null, 0, null, null,
+                null, null, null);
     }
 
     /**
@@ -272,7 +288,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
                 0, 0,
                 null, 0, 0, null, 0,
                 null, 0, 0,
-                null, null, 0, null, null);
+                null, null, 0, null, null,
+                null, null, null);
     }
 
     /**
@@ -336,6 +353,9 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             builder.data(witnessPadding);
             builder.number(parentOutputCount);
             builder.number(parentPP1FtIndex);
+            builder.data(transferRecipientPKH != null ? transferRecipientPKH : new byte[0]);
+            builder.data(merkleProof != null ? merkleProof : new byte[0]);
+            builder.data(merkleSides != null ? merkleSides : new byte[0]);
             builder.number(1);
             return builder.build();
         } catch (IOException e) {
@@ -365,6 +385,8 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             builder.number(myOutputIndex);
             builder.number(parentOutputCount);
             builder.number(parentPP1FtIndex);
+            builder.data(merkleProof != null ? merkleProof : new byte[0]);
+            builder.data(merkleSides != null ? merkleSides : new byte[0]);
             builder.number(2);
             return builder.build();
         } catch (IOException e) {

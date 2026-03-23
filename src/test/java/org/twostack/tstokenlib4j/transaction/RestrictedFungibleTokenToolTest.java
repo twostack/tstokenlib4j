@@ -154,6 +154,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         assertEquals("Mint should produce 5 outputs", 5, mintTx.getOutputs().size());
@@ -189,6 +190,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         // Extract tokenId from PP1_RFT output script at bytes 22-53
@@ -219,6 +221,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         Transaction witnessTx = tool.createRftWitnessTxn(
@@ -243,7 +246,9 @@ public class RestrictedFungibleTokenToolTest {
                 0,     // parentPP1FtIndexB
                 0,     // recipientAmount
                 0,     // tokenChangeAmount
-                null   // recipientPKH
+                null,  // recipientPKH
+                null,  // merkleProof
+                null   // merkleSides
         );
 
         assertEquals("Witness should produce 1 output", 1, witnessTx.getOutputs().size());
@@ -268,6 +273,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         // Step 2: Witness for mint
@@ -284,7 +290,7 @@ public class RestrictedFungibleTokenToolTest {
                 Rabin.bigIntToScriptNum(computeRabinSig(bobFundingTx.getTransactionIdBytes()).s()),
                 computeRabinSig(bobFundingTx.getTransactionIdBytes()).padding(),
                 dummyIdentityTxId, dummyEd25519PubKey,
-                null, 0, 0, 0, 0, null);
+                null, 0, 0, 0, 0, null, null, null);
 
         // Step 3: Transfer to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -303,6 +309,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 1);
 
         assertEquals("Transfer should produce 5 outputs", 5, transferTx.getOutputs().size());
@@ -326,6 +333,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         // Burn
@@ -362,6 +370,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         // Redeem
@@ -399,6 +408,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 null);
 
         // Mint witness
@@ -415,7 +425,7 @@ public class RestrictedFungibleTokenToolTest {
                 Rabin.bigIntToScriptNum(computeRabinSig(bobFundingTx.getTransactionIdBytes()).s()),
                 computeRabinSig(bobFundingTx.getTransactionIdBytes()).padding(),
                 dummyIdentityTxId, dummyEd25519PubKey,
-                null, 0, 0, 0, 0, null);
+                null, 0, 0, 0, 0, null, null, null);
 
         // Split: send 300 to Alice, 700 change to Bob
         Transaction splitFundingTx = getBobFundingTx();
@@ -437,6 +447,7 @@ public class RestrictedFungibleTokenToolTest {
                 rabinPubKeyHash,
                 0x00,
                 1000,
+                0, new byte[32],
                 1);
 
         assertEquals("Split should produce 8 outputs", 8, splitTx.getOutputs().size());

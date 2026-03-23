@@ -30,6 +30,8 @@ public class PP1RftLockBuilder extends LockingScriptBuilder {
     private final byte[] rabinPubKeyHash;
     private final int flags;
     private final long amount;
+    private final int tokenSupply;
+    private final byte[] merkleRoot;
 
     /**
      * Creates a new PP1 restricted fungible token lock builder.
@@ -39,10 +41,12 @@ public class PP1RftLockBuilder extends LockingScriptBuilder {
      * @param rabinPubKeyHash the HASH160 of the Rabin oracle's public key (must be exactly 20 bytes)
      * @param flags           restriction flags encoded as a 4-byte little-endian integer
      * @param amount          the fungible token amount
+     * @param tokenSupply     the total token supply (must be >= 0)
+     * @param merkleRoot      the 32-byte Merkle root of the whitelist tree (must be exactly 32 bytes)
      * @throws IllegalArgumentException if any byte-array parameter is null or has an incorrect length
      */
     public PP1RftLockBuilder(byte[] ownerPKH, byte[] tokenId, byte[] rabinPubKeyHash,
-                             int flags, long amount) {
+                             int flags, long amount, int tokenSupply, byte[] merkleRoot) {
         if (ownerPKH == null || ownerPKH.length != 20) {
             throw new IllegalArgumentException("ownerPKH must be 20 bytes");
         }
@@ -52,18 +56,26 @@ public class PP1RftLockBuilder extends LockingScriptBuilder {
         if (rabinPubKeyHash == null || rabinPubKeyHash.length != 20) {
             throw new IllegalArgumentException("rabinPubKeyHash must be 20 bytes");
         }
+        if (tokenSupply < 0) {
+            throw new IllegalArgumentException("tokenSupply must be >= 0");
+        }
+        if (merkleRoot == null || merkleRoot.length != 32) {
+            throw new IllegalArgumentException("merkleRoot must be 32 bytes");
+        }
         this.ownerPKH = ownerPKH.clone();
         this.tokenId = tokenId.clone();
         this.rabinPubKeyHash = rabinPubKeyHash.clone();
         this.flags = flags;
         this.amount = amount;
+        this.tokenSupply = tokenSupply;
+        this.merkleRoot = merkleRoot.clone();
     }
 
     /**
      * Builds the PP1 RFT locking script by loading the template from
      * {@code templates/ft/pp1_rft.json} and substituting the {@code {{ownerPKH}}},
      * {@code {{tokenId}}}, {@code {{rabinPubKeyHash}}}, {@code {{flags}}}, and
-     * {@code {{amount}}} placeholders.
+     * {@code {{amount}}}, {@code {{tokenSupply}}}, and {@code {{merkleRoot}}} placeholders.
      *
      * @return the fully assembled locking {@link Script}
      */
@@ -76,6 +88,8 @@ public class PP1RftLockBuilder extends LockingScriptBuilder {
         hex = hex.replace("{{rabinPubKeyHash}}", Utils.HEX.encode(rabinPubKeyHash));
         hex = hex.replace("{{flags}}", encodeLeUint32(flags));
         hex = hex.replace("{{amount}}", Utils.HEX.encode(AmountEncoder.encodeLeUint56(amount)));
+        hex = hex.replace("{{tokenSupply}}", encodeLeUint32(tokenSupply));
+        hex = hex.replace("{{merkleRoot}}", Utils.HEX.encode(merkleRoot));
         return Script.fromByteArray(Utils.HEX.decode(hex));
     }
 
@@ -95,4 +109,8 @@ public class PP1RftLockBuilder extends LockingScriptBuilder {
     public int getFlags() { return flags; }
     /** @return the fungible token amount */
     public long getAmount() { return amount; }
+    /** @return the total token supply */
+    public int getTokenSupply() { return tokenSupply; }
+    /** @return a defensive copy of the Merkle root (32 bytes) */
+    public byte[] getMerkleRoot() { return merkleRoot.clone(); }
 }

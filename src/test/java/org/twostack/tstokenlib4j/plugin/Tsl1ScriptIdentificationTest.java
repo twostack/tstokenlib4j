@@ -71,7 +71,7 @@ public class Tsl1ScriptIdentificationTest {
 
     @Test
     public void identifyScript_recognizesRft() {
-        byte[] script = new PP1RftLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_RABIN_PKH, 0x01, 5000)
+        byte[] script = new PP1RftLockBuilder(TEST_PKH, TEST_TOKEN_ID, TEST_RABIN_PKH, 0x01, 5000, 0, new byte[32])
                 .getLockingScript().getProgram();
         assertThat(plugin.identifyScript(script)).isEqualTo("pp1_rft");
     }

@@ -77,6 +77,8 @@ public class RestrictedFungibleTokenTool {
      * @param rabinPubKeyHash    20-byte HASH160 of the Rabin public key
      * @param flags              transfer policy flags
      * @param amount             initial token supply
+     * @param tokenSupply        total token supply
+     * @param merkleRoot         32-byte Merkle root of the whitelist tree
      * @param metadataBytes      metadata for the OP_RETURN output
      * @return the mint transaction
      */
@@ -89,6 +91,8 @@ public class RestrictedFungibleTokenTool {
             byte[] rabinPubKeyHash,
             int flags,
             long amount,
+            int tokenSupply,
+            byte[] merkleRoot,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
@@ -104,7 +108,7 @@ public class RestrictedFungibleTokenTool {
         tokenTxBuilder.withFeePerKb(1);
 
         // Output 1: PP1_RFT
-        tokenTxBuilder.spendTo(new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, amount), BigInteger.ONE);
+        tokenTxBuilder.spendTo(new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, amount, tokenSupply, merkleRoot), BigInteger.ONE);
 
         // Output 2: PP2-FT
         tokenTxBuilder.spendTo(new PP2FtLockBuilder(
@@ -249,7 +253,9 @@ public class RestrictedFungibleTokenTool {
             int parentPP1FtIndexB,
             long recipientAmount,
             long tokenChangeAmount,
-            byte[] recipientPKH)
+            byte[] recipientPKH,
+            byte[] merkleProof,
+            byte[] merkleSides)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
@@ -284,7 +290,8 @@ public class RestrictedFungibleTokenTool {
                 parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
                 parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
-                recipientAmount, tokenChangeAmount, recipientPKH);
+                recipientAmount, tokenChangeAmount, recipientPKH,
+                merkleProof, merkleSides);
 
         Transaction witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1RftUnlocker, pp2FtUnlocker, witnessLocker);
@@ -298,7 +305,8 @@ public class RestrictedFungibleTokenTool {
                 parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
                 parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
-                recipientAmount, tokenChangeAmount, recipientPKH);
+                recipientAmount, tokenChangeAmount, recipientPKH,
+                merkleProof, merkleSides);
 
         witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1RftUnlocker, pp2FtUnlocker, witnessLocker);
@@ -326,6 +334,8 @@ public class RestrictedFungibleTokenTool {
      * @param rabinPubKeyHash            20-byte HASH160 of the Rabin public key
      * @param flags                      transfer policy flags
      * @param amount                     full token balance being transferred
+     * @param tokenSupply                total token supply
+     * @param merkleRoot                 32-byte Merkle root of the whitelist tree
      * @param prevTripletBaseIndex       base index of the previous token triplet (default 1)
      * @return the transfer transaction
      */
@@ -342,6 +352,8 @@ public class RestrictedFungibleTokenTool {
             byte[] rabinPubKeyHash,
             int flags,
             long amount,
+            int tokenSupply,
+            byte[] merkleRoot,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
@@ -352,7 +364,7 @@ public class RestrictedFungibleTokenTool {
         int prevPP3Index = prevTripletBaseIndex + 2;
 
         // Build output lockers
-        PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, amount);
+        PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, amount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH);
@@ -421,6 +433,8 @@ public class RestrictedFungibleTokenTool {
      * @param rabinPubKeyHash             20-byte HASH160 of the Rabin public key
      * @param flags                       transfer policy flags
      * @param totalAmount                 full token balance being split
+     * @param tokenSupply                 total token supply
+     * @param merkleRoot                  32-byte Merkle root of the whitelist tree
      * @param prevTripletBaseIndex        base index of the previous token triplet (default 1)
      * @return the split transfer transaction
      */
@@ -439,6 +453,8 @@ public class RestrictedFungibleTokenTool {
             byte[] rabinPubKeyHash,
             int flags,
             long totalAmount,
+            int tokenSupply,
+            byte[] merkleRoot,
             int prevTripletBaseIndex)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
@@ -451,13 +467,13 @@ public class RestrictedFungibleTokenTool {
         int prevPP3Index = prevTripletBaseIndex + 2;
 
         // Recipient triplet (outputs 1,2,3)
-        PP1RftLockBuilder pp1RftRecipientLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, sendAmount);
+        PP1RftLockBuilder pp1RftRecipientLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, sendAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtRecipientLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH);
 
         // Change triplet (outputs 4,5,6)
-        PP1RftLockBuilder pp1RftChangeLocker = new PP1RftLockBuilder(senderPKH, tokenId, rabinPubKeyHash, flags, changeTokenAmount);
+        PP1RftLockBuilder pp1RftChangeLocker = new PP1RftLockBuilder(senderPKH, tokenId, rabinPubKeyHash, flags, changeTokenAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtChangeLocker = new PP2FtLockBuilder(
                 getOutpoint(changeWitnessFundingTxId), senderPKH, 1, senderPKH, 4, 5);
         PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH);
@@ -532,6 +548,8 @@ public class RestrictedFungibleTokenTool {
      * @param rabinPubKeyHash         20-byte HASH160 of the Rabin public key
      * @param flags                   transfer policy flags
      * @param totalAmount             combined token amount from both triplets
+     * @param tokenSupply             total token supply
+     * @param merkleRoot              32-byte Merkle root of the whitelist tree
      * @param prevTripletBaseIndexA   base index of the first token triplet (default 1)
      * @param prevTripletBaseIndexB   base index of the second token triplet (default 1)
      * @return the merge transaction
@@ -551,6 +569,8 @@ public class RestrictedFungibleTokenTool {
             byte[] rabinPubKeyHash,
             int flags,
             long totalAmount,
+            int tokenSupply,
+            byte[] merkleRoot,
             int prevTripletBaseIndexA,
             int prevTripletBaseIndexB)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
@@ -564,7 +584,7 @@ public class RestrictedFungibleTokenTool {
         int prevPP3IndexB = prevTripletBaseIndexB + 2;
 
         // Build output lockers (single merged triplet)
-        PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, flags, totalAmount);
+        PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, flags, totalAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(mergedWitnessFundingTxId), ownerPKH, 1, ownerPKH, 1, 2);
         PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH);
@@ -633,7 +653,9 @@ public class RestrictedFungibleTokenTool {
             int parentPP1FtIndexB,
             long recipientAmount,
             long tokenChangeAmount,
-            byte[] recipientPKH) throws IOException {
+            byte[] recipientPKH,
+            byte[] merkleProof,
+            byte[] merkleSides) throws IOException {
 
         int pp2Index = tripletBaseIndex + 1;
         long changeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
@@ -647,10 +669,14 @@ public class RestrictedFungibleTokenTool {
 
         } else if (action == RestrictedFungibleTokenAction.TRANSFER) {
             byte[] pp2Output = tokenTx.getOutputs().get(pp2Index).serialize();
+            byte[] transferRecipientPKH = extractPKHFromPP1Rft(tokenTx.getOutputs().get(tripletBaseIndex).getScript());
             return PP1RftUnlockBuilder.forTransfer(
                     preImage, pp2Output, ownerPubkey, tokenChangePKH,
                     changeAmount, tokenTxLHS, parentTokenTxBytes,
-                    paddingBytes, parentOutputCount, parentPP1FtIndex);
+                    paddingBytes, parentOutputCount, parentPP1FtIndex,
+                    transferRecipientPKH,
+                    merkleProof != null ? merkleProof : new byte[0],
+                    merkleSides != null ? merkleSides : new byte[0]);
 
         } else if (action == RestrictedFungibleTokenAction.SPLIT_TRANSFER) {
             byte[] pp2RecipientOutput = tokenTx.getOutputs().get(2).serialize();
@@ -662,7 +688,9 @@ public class RestrictedFungibleTokenTool {
                     parentTokenTxBytes, paddingBytes,
                     recipientAmount, tokenChangeAmount,
                     recipientPKH, tripletBaseIndex, parentOutputCount,
-                    parentPP1FtIndex);
+                    parentPP1FtIndex,
+                    merkleProof != null ? merkleProof : new byte[0],
+                    merkleSides != null ? merkleSides : new byte[0]);
 
         } else if (action == RestrictedFungibleTokenAction.MERGE) {
             byte[] pp2Output = tokenTx.getOutputs().get(pp2Index).serialize();
@@ -676,6 +704,16 @@ public class RestrictedFungibleTokenTool {
         } else {
             throw new IllegalArgumentException("Unsupported action for witness: " + action);
         }
+    }
+
+    /**
+     * Extracts the 20-byte owner PKH from a PP1_RFT script (bytes 1-20 of the script).
+     */
+    private byte[] extractPKHFromPP1Rft(Script script) {
+        byte[] buf = script.getProgram();
+        byte[] pkh = new byte[20];
+        System.arraycopy(buf, 1, pkh, 0, 20);
+        return pkh;
     }
 
     /**

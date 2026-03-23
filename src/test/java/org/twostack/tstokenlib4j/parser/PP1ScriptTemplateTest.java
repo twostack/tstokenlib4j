@@ -61,7 +61,7 @@ public class PP1ScriptTemplateTest {
         smScript = new PP1SmLockBuilder(OWNER_PKH, TOKEN_ID, MERCHANT_PKH, CUSTOMER_PKH, RABIN_PKH,
                 1, 3, COMMITMENT_HASH, 0x3F, 144).getLockingScript();
         rnftScript = new PP1RnftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 7).getLockingScript();
-        rftScript = new PP1RftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 7, 5000L).getLockingScript();
+        rftScript = new PP1RftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 7, 5000L, 0, new byte[32]).getLockingScript();
     }
 
     // --- NFT ---

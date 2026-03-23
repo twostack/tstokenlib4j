@@ -11,17 +11,21 @@ import java.util.List;
  *
  * <p>Layout after the 54-byte common prefix:
  * <pre>
- *   byte[54]     = 0x14 (push 20: rabinPKH)
- *   byte[55..74] = rabinPKH
- *   byte[75]     = 0x04 (push 4: flags)
- *   byte[76..79] = flags (LE uint32)
- *   byte[80]     = 0x08 (push 8: amount)
- *   byte[81..88] = amount (LE uint56)
+ *   byte[54]      = 0x14 (push 20: rabinPKH)
+ *   byte[55..74]  = rabinPKH
+ *   byte[75]      = 0x04 (push 4: flags)
+ *   byte[76..79]  = flags (LE uint32)
+ *   byte[80]      = 0x08 (push 8: amount)
+ *   byte[81..88]  = amount (LE uint56)
+ *   byte[89]      = 0x04 (push 4: tokenSupply)
+ *   byte[90..93]  = tokenSupply (LE uint32)
+ *   byte[94]      = 0x20 (push 32: merkleRoot)
+ *   byte[95..126] = merkleRoot
  * </pre>
  */
 public class PP1RftTemplate implements ScriptTemplate {
 
-    private static final int MIN_LEN = 89; // 54 + 1+20 + 1+4 + 1+8
+    private static final int MIN_LEN = 127; // 54 + 1+20 + 1+4 + 1+8 + 1+4 + 1+32
 
     @Override
     public String getName() {
@@ -33,8 +37,10 @@ public class PP1RftTemplate implements ScriptTemplate {
         byte[] p = script.getProgram();
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
         return p[54] == PP1TemplateBase.PUSH_20
-                && p[75] == PP1TemplateBase.PUSH_4
-                && p[80] == PP1TemplateBase.PUSH_8;
+                && p[75] == PP1TemplateBase.PUSH_4    // flags
+                && p[80] == PP1TemplateBase.PUSH_8    // amount
+                && p[89] == PP1TemplateBase.PUSH_4    // tokenSupply
+                && p[94] == PP1TemplateBase.PUSH_32;  // merkleRoot
     }
 
     @Override
@@ -59,7 +65,9 @@ public class PP1RftTemplate implements ScriptTemplate {
                 PP1TemplateBase.extractTokenId(p),
                 PP1TemplateBase.extractBytes(p, 55, 20),
                 PP1TemplateBase.readLeUint32(p, 76),
-                PP1TemplateBase.readLeUint56(p, 81)
+                PP1TemplateBase.readLeUint56(p, 81),
+                PP1TemplateBase.readLeUint32(p, 90),
+                PP1TemplateBase.extractBytes(p, 95, 32)
         );
     }
 }

@@ -136,7 +136,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             ).getLockingScript().getProgram();
             case "pp1_rft" -> new PP1RftLockBuilder(
                     hexBytes(p, "ownerPKH"), hexBytes(p, "tokenId"),
-                    hexBytes(p, "rabinPKH"), toInt(p, "flags"), toLong(p, "amount")
+                    hexBytes(p, "rabinPKH"), toInt(p, "flags"), toLong(p, "amount"),
+                    toInt(p, "tokenSupply"), hexBytes(p, "merkleRoot")
             ).getLockingScript().getProgram();
             default -> throw new IllegalArgumentException("Unknown script type: " + spec.scriptType());
         };
@@ -623,6 +624,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         requireLong(params, "amount"),
+                        optionalInt(params, "tokenSupply", 0),
+                        optionalHexBytes(params, "merkleRoot") != null ? optionalHexBytes(params, "merkleRoot") : new byte[32],
                         optionalHexBytes(params, "metadataBytes"));
             }
             case "rft.transfer" -> {
@@ -638,6 +641,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         requireLong(params, "amount"),
+                        optionalInt(params, "tokenSupply", 0),
+                        optionalHexBytes(params, "merkleRoot") != null ? optionalHexBytes(params, "merkleRoot") : new byte[32],
                         optionalInt(params, "prevTripletBaseIndex", 1));
             }
             case "rft.split" -> {
@@ -655,6 +660,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         requireLong(params, "totalAmount"),
+                        optionalInt(params, "tokenSupply", 0),
+                        optionalHexBytes(params, "merkleRoot") != null ? optionalHexBytes(params, "merkleRoot") : new byte[32],
                         optionalInt(params, "prevTripletBaseIndex", 1));
             }
             case "rft.merge" -> {
@@ -671,6 +678,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         requireLong(params, "totalAmount"),
+                        optionalInt(params, "tokenSupply", 0),
+                        optionalHexBytes(params, "merkleRoot") != null ? optionalHexBytes(params, "merkleRoot") : new byte[32],
                         optionalInt(params, "prevTripletBaseIndexA", 1),
                         optionalInt(params, "prevTripletBaseIndexB", 1));
             }
@@ -701,7 +710,9 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalInt(params, "parentPP1FtIndexB", 0),
                         optionalLong(params, "recipientAmount", 0),
                         optionalLong(params, "tokenChangeAmount", 0),
-                        optionalHexBytes(params, "recipientPKH"));
+                        optionalHexBytes(params, "recipientPKH"),
+                        optionalHexBytes(params, "merkleProof"),
+                        optionalHexBytes(params, "merkleSides"));
             }
             case "rft.burn" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
