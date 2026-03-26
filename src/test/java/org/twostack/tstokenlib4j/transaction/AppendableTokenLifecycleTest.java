@@ -132,7 +132,7 @@ public class AppendableTokenLifecycleTest {
                 issuerAddress,
                 tokenId,
                 issuerPKH,
-                rabinPubKeyHash,
+                new byte[20], // Rabin not plumbed into AT issuance witness yet
                 THRESHOLD,
                 "test-token".getBytes());
 
