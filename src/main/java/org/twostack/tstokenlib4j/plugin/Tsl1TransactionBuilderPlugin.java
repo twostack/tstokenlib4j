@@ -415,9 +415,21 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             }
             case "at.witness" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                // Accept raw hex directly to avoid read-model race after issuance/stamp
+                String tokenTxRawHex = optionalString(params, "tokenTxRawHex");
+                Transaction tokenTx = tokenTxRawHex != null
+                        ? Transaction.fromHex(tokenTxRawHex)
+                        : resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                if ("0000000000000000000000000000000000000000000000000000000000000000".equals(parentTokenTxId)) {
+                    parentTokenTxBytes = new byte[0]; // issuance has no parent
+                } else {
+                    String parentRawHex = optionalString(params, "parentTokenTxRawHex");
+                    parentTokenTxBytes = parentRawHex != null
+                            ? Utils.HEX.decode(parentRawHex)
+                            : Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
                 AppendableTokenAction atAction = AppendableTokenAction.valueOf(
                         requireString(params, "witnessAction"));
                 yield new AppendableTokenTool(networkAddressType).createWitnessTxn(
