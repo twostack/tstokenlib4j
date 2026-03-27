@@ -160,6 +160,7 @@ public class AppendableTokenLifecycleTest {
                 issuerAddress,
                 tokenId,
                 issuerPKH,
+                issuerPKH,
                 rabinPubKeyHash,
                 THRESHOLD,
                 "test-token".getBytes());

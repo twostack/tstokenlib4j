@@ -189,6 +189,7 @@ public class AppendableTokenTool {
             PublicKey fundingPubKey,
             Address recipientAddress,
             byte[] witnessFundingTxId,
+            byte[] witnessChangePKH,
             byte[] issuerPKH,
             byte[] rabinPubKeyHash,
             int threshold,
@@ -209,13 +210,13 @@ public class AppendableTokenTool {
                 TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker);
         tokenTxBuilder.withFeePerKb(1);
 
-        // Output 1: PP1_AT
+        // Output 1: PP1_AT — ownerPKH is the token recipient
         tokenTxBuilder.spendTo(new PP1AtLockBuilder(recipientPKH, tokenId, issuerPKH,
                 rabinPubKeyHash, 0, threshold, initialStampsHash), BigInteger.ONE);
 
-        // Output 2: PP2
+        // Output 2: PP2 — witnessChangePKH must match the witness TX output (signer's key)
         tokenTxBuilder.spendTo(new PP2LockBuilder(getOutpoint(witnessFundingTxId),
-                recipientPKH, 1, recipientPKH), BigInteger.ONE);
+                witnessChangePKH, 1, recipientPKH), BigInteger.ONE);
 
         // Output 3: PartialWitness
         tokenTxBuilder.spendTo(new PartialWitnessLockBuilder(recipientPKH), BigInteger.ONE);

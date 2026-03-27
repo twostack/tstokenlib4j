@@ -373,11 +373,29 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             // ── AT ──
             case "at.issue" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                byte[] issuerPKH = pubKey.getPubKeyHash();
+                // The witness funding txid must be committed in PP2 at issuance time.
+                // Pick the next available UTXO from the coordinator's funding list
+                // (index 0 is used for this issuance, index 1 is earmarked for the witness).
+                // BitcoinUtxo.txid() is display-order hex; createTokenIssuanceTxn
+                // expects wire-order bytes, so reverse after decoding.
+                byte[] witnessFundingTxId;
+                if (request.fundingUtxos().size() > 1) {
+                    witnessFundingTxId = Utils.reverseBytes(
+                            Utils.HEX.decode(request.fundingUtxos().get(1).txid()));
+                } else {
+                    witnessFundingTxId = optionalHexBytes(params, "witnessFundingTxId");
+                    if (witnessFundingTxId == null) witnessFundingTxId = new byte[32];
+                }
+                // PP2's witnessChangePKH must match the witness TX output, which is
+                // locked to the coordinator's signer key.
+                byte[] witnessChangePKH = pubKey.getPubKeyHash();
                 yield new AppendableTokenTool(networkAddressType).createTokenIssuanceTxn(
                         fundingTx, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        requireHexBytes(params, "witnessFundingTxId"),
-                        requireHexBytes(params, "issuerPKH"),
+                        witnessFundingTxId,
+                        witnessChangePKH,
+                        issuerPKH,
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "threshold"),
                         optionalHexBytes(params, "metadataBytes"));
@@ -401,14 +419,19 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                // Extract ownerPKH from the parent PP1 output (carried forward, not recomputed).
+                // Stamp signer is the issuer — derive issuerPKH from the coordinator's pubKey.
+                byte[] parentPP1 = prevTokenTx.getOutputs().get(1).getScript().getProgram();
+                byte[] ownerPKH = new byte[20];
+                System.arraycopy(parentPP1, 1, ownerPKH, 0, 20);
                 yield new AppendableTokenTool(networkAddressType).createTokenStampTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, signer, pubKey,
                         requireHexBytes(params, "issuerWitnessFundingTxId"),
                         requireHexBytes(params, "stampMetadata"),
-                        requireHexBytes(params, "ownerPKH"),
+                        ownerPKH,
                         requireHexBytes(params, "tokenId"),
-                        requireHexBytes(params, "issuerPKH"),
+                        pubKey.getPubKeyHash(),
                         requireInt(params, "parentStampCount"),
                         requireInt(params, "threshold"),
                         requireHexBytes(params, "parentStampsHash"));
@@ -432,9 +455,11 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 }
                 AppendableTokenAction atAction = AppendableTokenAction.valueOf(
                         requireString(params, "witnessAction"));
+                // tokenChangePKH must match the witness output lock (which uses pubKey),
+                // so derive it from the coordinator's pubKey rather than external params.
                 yield new AppendableTokenTool(networkAddressType).createWitnessTxn(
                         signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
-                        requireHexBytes(params, "tokenChangePKH"),
+                        pubKey.getPubKeyHash(),
                         atAction,
                         optionalHexBytes(params, "stampMetadata"),
                         optionalHexBytes(params, "rabinN"),
