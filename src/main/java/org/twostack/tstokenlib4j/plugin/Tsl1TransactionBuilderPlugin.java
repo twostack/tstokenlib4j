@@ -436,7 +436,12 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
                         requireHexBytes(params, "tokenChangePKH"),
                         atAction,
-                        optionalHexBytes(params, "stampMetadata"));
+                        optionalHexBytes(params, "stampMetadata"),
+                        optionalHexBytes(params, "rabinN"),
+                        optionalHexBytes(params, "rabinS"),
+                        toInt(params, "rabinPadding"),
+                        optionalHexBytes(params, "identityTxId"),
+                        optionalHexBytes(params, "ed25519PubKey"));
             }
             case "at.burn" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);

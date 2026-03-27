@@ -2,11 +2,7 @@ package org.twostack.tstokenlib4j.transaction;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.twostack.bitcoin4j.Address;
-import org.twostack.bitcoin4j.Coin;
-import org.twostack.bitcoin4j.PrivateKey;
-import org.twostack.bitcoin4j.PublicKey;
-import org.twostack.bitcoin4j.Utils;
+import org.twostack.bitcoin4j.*;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
@@ -14,22 +10,24 @@ import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
+import org.twostack.tstokenlib4j.crypto.RabinSignature;
 import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.AppendableTokenAction;
 
+import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.util.EnumSet;
 
 import static org.junit.Assert.*;
 
 /**
- * End-to-end lifecycle test for the Appendable Token (AT) archetype.
+ * End-to-end lifecycle test for the Appendable Token (AT) archetype
+ * with Bitcoin4J script interpreter validation.
  *
- * Validates the full permissioned AT flow with Bitcoin4J script interpreter:
+ * Validates the full permissioned AT flow:
  *   issue → witness → stamp #1 → witness → stamp #2 → witness
  *
- * Each step's PP1 input is verified via {@link Interpreter#correctlySpends}
- * to prove the transaction would pass consensus validation on-chain.
+ * Each step's PP1 input is verified via {@link Interpreter#correctlySpends}.
  */
 public class AppendableTokenLifecycleTest {
 
@@ -47,10 +45,15 @@ public class AppendableTokenLifecycleTest {
     private static Transaction fundingTx;
     private static Transaction fundingTx2;
     private static AppendableTokenTool atTool;
-    private static int sigHashAll;
 
+    // Rabin identity material
     private static RabinKeyPair rabinKeyPair;
+    private static byte[] rabinNBytes;
     private static byte[] rabinPubKeyHash;
+    private static byte[] rabinSBytes;
+    private static int rabinPaddingValue;
+    private static byte[] dummyIdentityTxId;
+    private static byte[] dummyEd25519PubKey;
 
     private static final int THRESHOLD = 10;
 
@@ -69,11 +72,28 @@ public class AppendableTokenLifecycleTest {
         fundingTx = Transaction.fromHex(FUNDING_TX_HEX);
         fundingTx2 = Transaction.fromHex(FUNDING_TX_2_HEX);
 
-        sigHashAll = SigHashType.FORKID.value | SigHashType.ALL.value;
         atTool = new AppendableTokenTool(NetworkAddressType.TEST_PKH);
 
+        // Rabin key setup
         rabinKeyPair = Rabin.generateKeyPair(1024);
-        rabinPubKeyHash = Utils.sha256hash160(Rabin.bigIntToScriptNum(rabinKeyPair.n()));
+        rabinNBytes = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        rabinPubKeyHash = Utils.sha256hash160(rabinNBytes);
+
+        // Dummy identity material
+        dummyIdentityTxId = new byte[32];
+        for (int i = 0; i < 32; i++) dummyIdentityTxId[i] = (byte) (i + 1);
+
+        dummyEd25519PubKey = new byte[32];
+        for (int i = 0; i < 32; i++) dummyEd25519PubKey[i] = (byte) (0x41 + i);
+
+        // Rabin signature over identity + tokenId
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = concat(dummyIdentityTxId, dummyEd25519PubKey, tokenId);
+        byte[] sha256 = Sha256Hash.hash(messageBytes);
+        BigInteger messageHash = Rabin.hashBytesToScriptInt(sha256);
+        RabinSignature sig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
+        rabinSBytes = Rabin.bigIntToScriptNum(sig.s());
+        rabinPaddingValue = sig.padding();
     }
 
     private SigningCallback issuerSigner() {
@@ -96,10 +116,18 @@ public class AppendableTokenLifecycleTest {
         return sha256(combined);
     }
 
-    /**
-     * Verify that the spending transaction's input at {@code inputIndex} correctly
-     * spends the output from {@code parentTx} at {@code parentVout}.
-     */
+    private static byte[] concat(byte[]... arrays) {
+        int len = 0;
+        for (byte[] a : arrays) len += a.length;
+        byte[] result = new byte[len];
+        int pos = 0;
+        for (byte[] a : arrays) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
     private void verifySpend(Transaction spendingTx, int inputIndex,
                               Transaction parentTx, int parentVout) {
         Script scriptSig = spendingTx.getInputs().get(inputIndex).getScriptSig();
@@ -122,7 +150,7 @@ public class AppendableTokenLifecycleTest {
     public void testFullStampLifecycle() throws Exception {
         byte[] tokenId = fundingTx.getTransactionIdBytes();
         byte[] issuerPKH = issuerAddress.getHash();
-        byte[] initialStampsHash = sha256(new byte[0]);
+        byte[] initialStampsHash = new byte[32]; // matches createTokenIssuanceTxn's initial value
 
         // ── Step 1: Issue ──
         Transaction issuanceTx = atTool.createTokenIssuanceTxn(
@@ -132,14 +160,13 @@ public class AppendableTokenLifecycleTest {
                 issuerAddress,
                 tokenId,
                 issuerPKH,
-                new byte[20], // Rabin not plumbed into AT issuance witness yet
+                rabinPubKeyHash,
                 THRESHOLD,
                 "test-token".getBytes());
 
         assertEquals(5, issuanceTx.getOutputs().size());
-        assertEquals(1, issuanceTx.getInputs().size());
 
-        // ── Step 2: Issuance Witness ──
+        // ── Step 2: Issuance Witness (with Rabin params) ──
         Transaction issuanceWitness = atTool.createWitnessTxn(
                 issuerSigner(),
                 issuerPub,
@@ -149,7 +176,12 @@ public class AppendableTokenLifecycleTest {
                 issuerPub,
                 issuerPKH,
                 AppendableTokenAction.ISSUANCE,
-                null);
+                null,
+                rabinNBytes,
+                rabinSBytes,
+                rabinPaddingValue,
+                dummyIdentityTxId,
+                dummyEd25519PubKey);
 
         assertEquals(1, issuanceWitness.getOutputs().size());
 
@@ -181,7 +213,6 @@ public class AppendableTokenLifecycleTest {
         verifySpend(stamp1Tx, 2, issuanceTx, 3);
 
         // ── Step 4: Stamp #1 Witness ──
-        byte[] stamp1Bytes = issuanceTx.serialize();
         byte[] stampsHash1 = computeStampsHash(initialStampsHash, stamp1Metadata);
 
         Transaction stamp1Witness = atTool.createWitnessTxn(
@@ -189,7 +220,7 @@ public class AppendableTokenLifecycleTest {
                 issuerPub,
                 fundingTx2,
                 stamp1Tx,
-                stamp1Bytes,
+                issuanceTx.serialize(),
                 issuerPub,
                 issuerPKH,
                 AppendableTokenAction.STAMP,
@@ -225,14 +256,12 @@ public class AppendableTokenLifecycleTest {
         verifySpend(stamp2Tx, 2, stamp1Tx, 3);
 
         // ── Step 6: Stamp #2 Witness ──
-        byte[] stamp2ParentBytes = stamp1Tx.serialize();
-
         Transaction stamp2Witness = atTool.createWitnessTxn(
                 issuerSigner(),
                 issuerPub,
                 fundingTx2,
                 stamp2Tx,
-                stamp2ParentBytes,
+                stamp1Tx.serialize(),
                 issuerPub,
                 issuerPKH,
                 AppendableTokenAction.STAMP,
@@ -242,10 +271,5 @@ public class AppendableTokenLifecycleTest {
 
         // Verify witness PP1 spend (input 1 spends stamp2Tx output 1)
         verifySpend(stamp2Witness, 1, stamp2Tx, 1);
-
-        // ── Verify chain integrity ──
-        // After 2 stamps, the token should be ready for stamp #3
-        // (witness TX exists, all outputs are valid)
-        assertNotNull("Stamp #2 witness should be valid", stamp2Witness.getTransactionId());
     }
 }

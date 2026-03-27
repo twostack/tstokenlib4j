@@ -77,6 +77,9 @@ public class AppendableTokenTool {
      * @param action              specifies the token action
      * @param stampMetadata       required for STAMP action, null otherwise
      */
+    /**
+     * @deprecated Use the overload with Rabin parameters for issuance witnesses.
+     */
     public Transaction createWitnessTxn(
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
@@ -87,6 +90,27 @@ public class AppendableTokenTool {
             byte[] tokenChangePKH,
             AppendableTokenAction action,
             byte[] stampMetadata)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createWitnessTxn(fundingSigner, fundingPubKey, fundingTx, tokenTx,
+                parentTokenTxBytes, pubkey, tokenChangePKH, action, stampMetadata,
+                null, null, 0, null, null);
+    }
+
+    public Transaction createWitnessTxn(
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
+            Transaction fundingTx,
+            Transaction tokenTx,
+            byte[] parentTokenTxBytes,
+            PublicKey pubkey,
+            byte[] tokenChangePKH,
+            AppendableTokenAction action,
+            byte[] stampMetadata,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
+            byte[] identityTxId,
+            byte[] ed25519PubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
@@ -117,7 +141,8 @@ public class AppendableTokenTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), stampMetadata);
+                fundingTx.getTransactionIdBytes(), stampMetadata,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
                 .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -132,7 +157,8 @@ public class AppendableTokenTool {
         pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), stampMetadata);
+                fundingTx.getTransactionIdBytes(), stampMetadata,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
                 .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -488,14 +514,19 @@ public class AppendableTokenTool {
             AppendableTokenAction action, byte[] preImage, byte[] pp2Output,
             PublicKey pubkey, byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
-            byte[] fundingTxHash, byte[] stampMetadata) {
+            byte[] fundingTxHash, byte[] stampMetadata,
+            byte[] rabinN, byte[] rabinS, int rabinPadding,
+            byte[] identityTxId, byte[] ed25519PubKey) {
 
         switch (action) {
             case ISSUANCE:
-                // Rabin signing for ISSUANCE will be added when Rabin params are plumbed through
                 return PP1AtUnlockBuilder.forIssuance(
                         preImage, fundingTxHash, paddingBytes, pubkey,
-                        new byte[0], new byte[0], 0, new byte[0], new byte[0]);
+                        rabinN != null ? rabinN : new byte[0],
+                        rabinS != null ? rabinS : new byte[0],
+                        rabinPadding,
+                        identityTxId != null ? identityTxId : new byte[0],
+                        ed25519PubKey != null ? ed25519PubKey : new byte[0]);
             case STAMP:
                 return PP1AtUnlockBuilder.forStamp(
                         preImage, pp2Output, pubkey,
