@@ -439,7 +439,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalHexBytes(params, "stampMetadata"),
                         optionalHexBytes(params, "rabinN"),
                         optionalHexBytes(params, "rabinS"),
-                        toInt(params, "rabinPadding"),
+                        optionalInt(params, "rabinPadding", 0),
                         optionalHexBytes(params, "identityTxId"),
                         optionalHexBytes(params, "ed25519PubKey"));
             }

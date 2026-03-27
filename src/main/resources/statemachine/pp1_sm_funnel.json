@@ -1,0 +1,96 @@
+{
+  "name": "PP1_SM_Funnel",
+  "description": "The PP1 state machine funnel (marketing/escrow)",
+  "roles": {
+    "merchant": {
+      "name": "merchant",
+      "authType": "PKH",
+      "description": "Organization/merchant"
+    },
+    "customer": {
+      "name": "customer",
+      "authType": "PKH",
+      "description": "Customer/participant"
+    },
+    "rabin": {
+      "name": "rabin",
+      "authType": "Rabin",
+      "description": "Rabin identity binding"
+    }
+  },
+  "states": {
+    "CREATED": {"name": "CREATED", "isTerminal": false, "encoding": 0},
+    "ENROLLED": {"name": "ENROLLED", "isTerminal": false, "encoding": 1},
+    "CONFIRMED": {"name": "CONFIRMED", "isTerminal": false, "encoding": 2},
+    "CONVERTED": {"name": "CONVERTED", "isTerminal": false, "encoding": 3},
+    "SETTLED": {"name": "SETTLED", "isTerminal": true, "encoding": 4},
+    "TIMED_OUT": {"name": "TIMED_OUT", "isTerminal": true, "encoding": 5}
+  },
+  "transitions": [
+    {
+      "name": "enroll",
+      "fromStates": ["CREATED"],
+      "toState": "ENROLLED",
+      "requiredSigners": ["merchant"],
+      "ownerAfter": "merchant",
+      "guards": [],
+      "effects": [],
+      "usesTimelock": false
+    },
+    {
+      "name": "confirm",
+      "fromStates": ["ENROLLED", "CONFIRMED"],
+      "toState": "CONFIRMED",
+      "requiredSigners": ["merchant", "customer"],
+      "ownerAfter": "merchant",
+      "guards": [],
+      "effects": [
+        {"fieldName": "milestoneCount", "type": "INCREMENT"},
+        {"fieldName": "commitmentHash", "type": "HASH_CHAIN"}
+      ],
+      "usesTimelock": false
+    },
+    {
+      "name": "convert",
+      "fromStates": ["CONFIRMED"],
+      "toState": "CONVERTED",
+      "requiredSigners": ["merchant", "customer"],
+      "ownerAfter": "merchant",
+      "guards": [
+        {"type": "field", "fieldName": "milestoneCount", "op": "GT", "constant": 0}
+      ],
+      "effects": [
+        {"fieldName": "commitmentHash", "type": "HASH_CHAIN"}
+      ],
+      "usesTimelock": false
+    },
+    {
+      "name": "settle",
+      "fromStates": ["ENROLLED", "CONFIRMED", "CONVERTED"],
+      "toState": "SETTLED",
+      "requiredSigners": ["merchant"],
+      "ownerAfter": "merchant",
+      "guards": [],
+      "effects": [],
+      "usesTimelock": false
+    },
+    {
+      "name": "timeout",
+      "fromStates": ["ENROLLED", "CONFIRMED", "CONVERTED"],
+      "toState": "TIMED_OUT",
+      "requiredSigners": ["merchant"],
+      "ownerAfter": "merchant",
+      "guards": [],
+      "effects": [],
+      "usesTimelock": true
+    }
+  ],
+  "customFields": {
+    "milestoneCount": {
+      "name": "milestoneCount",
+      "byteSize": 1,
+      "type": "COUNTER",
+      "isMutable": true
+    }
+  }
+}
