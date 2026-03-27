@@ -16,6 +16,7 @@ import org.twostack.tstokenlib4j.transaction.*;
 import org.twostack.tstokenlib4j.unlock.*;
 
 import java.math.BigInteger;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,7 +53,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
     private static final List<String> SUPPORTED_ACTIONS = List.of(
             "nft.issue", "nft.transfer", "nft.witness", "nft.burn",
             "ft.mint", "ft.transfer", "ft.split", "ft.merge", "ft.witness", "ft.burn",
-            "at.issue", "at.transfer", "at.stamp", "at.witness", "at.burn", "at.redeem",
+            "at.issue", "at.issueWithWitness", "at.transfer", "at.stamp", "at.stampWithWitness",
+            "at.witness", "at.burn", "at.redeem",
             "sm.create", "sm.enroll", "sm.transition", "sm.settle", "sm.timeout", "sm.witness", "sm.burn",
             "rnft.issue", "rnft.transfer", "rnft.witness", "rnft.burn", "rnft.redeem",
             "rft.mint", "rft.transfer", "rft.split", "rft.merge", "rft.witness", "rft.burn", "rft.redeem",
@@ -172,6 +174,11 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         PublicKey pubKey = PublicKey.fromHex(request.publicKeyHexes().get(0));
 
         try {
+            // Paired actions build both token TX and witness TX atomically
+            if (action.endsWith("WithWitness")) {
+                return buildPairedAction(action, params, request, signingCallback, pubKey);
+            }
+
             Transaction tx = dispatchBuild(action, params, request, signingCallback, pubKey);
             String txid = tx.getTransactionId();
             String rawHex = Utils.HEX.encode(tx.serialize());
@@ -182,6 +189,75 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         } catch (Exception e) {
             throw new RuntimeException("Failed to build transaction for action '" + action + "': " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Builds a token TX and its witness TX atomically from the same UTXO pool.
+     * The token TX uses fundingUtxos[0] for funding. The witness TX uses fundingUtxos[1].
+     * PP2 in the token TX commits to fundingUtxos[1] — guaranteed to match because
+     * both TXs are built in the same call with the same UTXO reservation.
+     */
+    private TransactionBuilderResult buildPairedAction(
+            String action, Map<String, Object> params, PluginTransactionRequest request,
+            SigningCallback signer, PublicKey pubKey) throws Exception {
+
+        TransactionLookup lookup = request.transactionLookup();
+        String baseAction = action.replace("WithWitness", "");
+
+        // Determine witness action type
+        String witnessAction;
+        if (baseAction.equals("at.issue")) {
+            witnessAction = "ISSUANCE";
+        } else if (baseAction.equals("at.stamp")) {
+            witnessAction = "STAMP";
+        } else {
+            throw new IllegalArgumentException("Paired action not supported: " + action);
+        }
+
+        // Build the token TX (uses fundingUtxos[0], commits to fundingUtxos[1] in PP2)
+        Transaction tokenTx = dispatchBuild(baseAction, params, request, signer, pubKey);
+        String tokenTxid = tokenTx.getTransactionId();
+        String tokenRawHex = Utils.HEX.encode(tokenTx.serialize());
+
+        // Build the witness TX using the SAME request (same UTXO pool).
+        // The witness TX uses fundingUtxos[1] for funding — the same UTXO
+        // that was committed in PP2 during the token TX build.
+        Map<String, Object> witnessParams = new HashMap<>(params);
+        witnessParams.put("action", "at.witness");
+        witnessParams.put("tokenTxRawHex", tokenRawHex);
+        witnessParams.put("witnessAction", witnessAction);
+        if ("ISSUANCE".equals(witnessAction)) {
+            witnessParams.put("parentTokenTxId", Utils.HEX.encode(new byte[32]));
+
+            // Compute Rabin signature now that tokenId is known.
+            // The tokenId is the funding TX's txid (= issuance TX's input[0] outpoint txid).
+            computeAndSetRabinSignature(witnessParams, tokenTx);
+        } else {
+            // For stamp witness, the parent token TX is the prev token TX
+            witnessParams.put("parentTokenTxId", requireString(params, "prevTokenTxId"));
+            if (params.containsKey("prevTokenTxRawHex")) {
+                witnessParams.put("parentTokenTxRawHex", params.get("prevTokenTxRawHex"));
+            }
+        }
+
+        // The witness TX needs to use fundingUtxos[1]. Create a shifted request
+        // that presents fundingUtxos[1] as the primary funding UTXO.
+        var witnessFundingUtxos = request.fundingUtxos().size() > 1
+                ? request.fundingUtxos().subList(1, request.fundingUtxos().size())
+                : request.fundingUtxos();
+        PluginTransactionRequest witnessRequest = new PluginTransactionRequest(
+                witnessFundingUtxos, request.signer(), request.transactionLookup(),
+                request.publicKeyHexes(), request.changeAddress(), witnessParams);
+
+        Transaction witnessTx = dispatchBuild("at.witness", witnessParams, witnessRequest, signer, pubKey);
+        String witnessTxid = witnessTx.getTransactionId();
+        String witnessRawHex = Utils.HEX.encode(witnessTx.serialize());
+
+        long tokenFee = computeFee(tokenTx, params, request);
+        long witnessFee = computeFee(witnessTx, witnessParams, witnessRequest);
+
+        return new TransactionBuilderResult(tokenTxid, tokenRawHex, tokenFee,
+                witnessTxid, witnessRawHex, witnessFee);
     }
 
     @Override
@@ -870,6 +946,50 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         }
         // Standard 5-output: issue, transfer, mint, enroll, transition, stamp
         return 5;
+    }
+
+    /**
+     * Computes the Rabin identity signature using the tokenId derived from the
+     * issuance TX (tokenId = funding TX txid = issuance TX input[0] outpoint txid).
+     * Requires rabinP, rabinQ, identityTxId, and ed25519PubKey in the params.
+     */
+    private void computeAndSetRabinSignature(Map<String, Object> params, Transaction tokenTx) {
+        String rabinPHex = optionalString(params, "rabinP");
+        String rabinQHex = optionalString(params, "rabinQ");
+        if (rabinPHex == null || rabinQHex == null) return;
+
+        java.math.BigInteger p = new java.math.BigInteger(rabinPHex, 16);
+        java.math.BigInteger q = new java.math.BigInteger(rabinQHex, 16);
+
+        // Extract tokenId from the PP1 script at offset [22:54] (display byte order).
+        // This is the authoritative tokenId embedded in the locking script.
+        byte[] pp1Script = tokenTx.getOutputs().get(1).getScript().getProgram();
+        byte[] tokenId = new byte[32];
+        System.arraycopy(pp1Script, 22, tokenId, 0, 32);
+
+        byte[] identityTxId = optionalHexBytes(params, "identityTxId");
+        if (identityTxId == null) identityTxId = new byte[32];
+        byte[] ed25519PubKey = optionalHexBytes(params, "ed25519PubKey");
+        if (ed25519PubKey == null) ed25519PubKey = new byte[32];
+
+        // message = identityTxId || ed25519PubKey || tokenId
+        byte[] message = new byte[identityTxId.length + ed25519PubKey.length + tokenId.length];
+        System.arraycopy(identityTxId, 0, message, 0, identityTxId.length);
+        System.arraycopy(ed25519PubKey, 0, message, identityTxId.length, ed25519PubKey.length);
+        System.arraycopy(tokenId, 0, message, identityTxId.length + ed25519PubKey.length, tokenId.length);
+
+        byte[] hash = org.twostack.bitcoin4j.Sha256Hash.hash(message);
+        java.math.BigInteger messageHash = org.twostack.tstokenlib4j.crypto.Rabin.hashBytesToScriptInt(hash);
+        org.twostack.tstokenlib4j.crypto.RabinSignature sig =
+                org.twostack.tstokenlib4j.crypto.Rabin.sign(messageHash, p, q);
+
+        params.put("rabinS", Utils.HEX.encode(
+                org.twostack.tstokenlib4j.crypto.Rabin.bigIntToScriptNum(sig.s())));
+        params.put("rabinPadding", sig.padding());
+
+        // Remove private key material from params
+        params.remove("rabinP");
+        params.remove("rabinQ");
     }
 
     private static String scriptTypeFromInfo(ScriptInfo info) {

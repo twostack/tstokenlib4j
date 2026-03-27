@@ -163,7 +163,7 @@ public class AppendableTokenTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                getOutpoint(fundingTx.getTransactionIdBytes()), stampMetadata,
+                getOutpoint(fundingTx.getTransactionIdBytes(), fundingVout), stampMetadata,
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
@@ -179,7 +179,7 @@ public class AppendableTokenTool {
         pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                getOutpoint(fundingTx.getTransactionIdBytes()), stampMetadata,
+                getOutpoint(fundingTx.getTransactionIdBytes(), fundingVout), stampMetadata,
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
@@ -369,7 +369,7 @@ public class AppendableTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes(), fundingVout));
 
         // Final build with PP3 unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
@@ -504,7 +504,7 @@ public class AppendableTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes(), fundingVout));
 
         // Final build with PP3 unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
