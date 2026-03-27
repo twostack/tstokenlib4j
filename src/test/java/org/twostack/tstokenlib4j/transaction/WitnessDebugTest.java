@@ -39,14 +39,16 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
-
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
         Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
                 fundingTx, 1, bobSigner, bobPub, bobAddress,
@@ -135,14 +137,16 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
-
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
         // Step 1: Issue NFT (funded from original funding tx at vout=1)
         Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
@@ -218,14 +222,16 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
-
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
         // Issuance: fund from vout=1, commit witness funding txid (32 bytes, not outpoint)
         // createTokenIssuanceTxn calls getOutpoint() internally, so we pass the raw txid.
@@ -295,14 +301,17 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
 
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
         Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
                 fundingTx, 1, bobSigner, bobPub, bobAddress,
                 fundingTx.getTransactionIdBytes(), rabinPubKeyHash, "test".getBytes());
@@ -393,14 +402,16 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
-
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
         // --- Step 1: Issuance ---
         // Fund from vout=1, commit witness funding to fundingTx (vout=1 is the PP1 hardcode)
@@ -516,14 +527,16 @@ public class WitnessDebugTest {
         byte[] ed25519PubKey = new byte[32];
         for (int i = 0; i < 32; i++) { identityTxId[i] = (byte)(i+1); ed25519PubKey[i] = (byte)(i+33); }
 
-        byte[] messageBytes = new byte[64];
+        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
+
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] messageBytes = new byte[96];
         System.arraycopy(identityTxId, 0, messageBytes, 0, 32);
         System.arraycopy(ed25519PubKey, 0, messageBytes, 32, 32);
+        System.arraycopy(tokenId, 0, messageBytes, 64, 32);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(messageBytes));
         RabinSignature rabinSig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
         byte[] rabinSBytes = Rabin.bigIntToScriptNum(rabinSig.s());
-
-        Transaction fundingTx = Transaction.fromHex(BOB_FUNDING_TX_HEX);
 
         Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
                 fundingTx, 1, bobSigner, bobPub, bobAddress,

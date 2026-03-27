@@ -3,11 +3,13 @@ package org.twostack.tstokenlib4j.transaction;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.twostack.bitcoin4j.Address;
+import org.twostack.bitcoin4j.Coin;
 import org.twostack.bitcoin4j.PrivateKey;
 import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Sha256Hash;
 import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
+import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
@@ -19,6 +21,8 @@ import org.twostack.tstokenlib4j.unlock.RestrictedTokenAction;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.LinkedList;
 
 import static org.junit.Assert.*;
 
@@ -106,8 +110,8 @@ public class RestrictedTokenToolTest {
             dummyEd25519PubKey[i] = (byte) (0x41 + i);
         }
 
-        // Rabin signature over identity material
-        byte[] messageBytes = concat(dummyIdentityTxId, dummyEd25519PubKey);
+        // Rabin signature over identity material + tokenId
+        byte[] messageBytes = concat(dummyIdentityTxId, dummyEd25519PubKey, bobFundingTx.getTransactionIdBytes());
         byte[] sha256 = Sha256Hash.hash(messageBytes);
         BigInteger messageHash = Rabin.hashBytesToScriptInt(sha256);
         RabinSignature sig = Rabin.sign(messageHash, rabinKeyPair.p(), rabinKeyPair.q());
@@ -124,6 +128,14 @@ public class RestrictedTokenToolTest {
         byte[] result = new byte[a.length + b.length];
         System.arraycopy(a, 0, result, 0, a.length);
         System.arraycopy(b, 0, result, a.length, b.length);
+        return result;
+    }
+
+    private static byte[] concat(byte[] a, byte[] b, byte[] c) {
+        byte[] result = new byte[a.length + b.length + c.length];
+        System.arraycopy(a, 0, result, 0, a.length);
+        System.arraycopy(b, 0, result, a.length, b.length);
+        System.arraycopy(c, 0, result, a.length + b.length, c.length);
         return result;
     }
 
@@ -336,7 +348,38 @@ public class RestrictedTokenToolTest {
         assertEquals("Redeem should have 4 inputs", 4, redeemTx.getInputs().size());
     }
 
-    // ---- Test 7: Multiple flag values ----
+    // ---- Test 7: Issuance witness PP1 clean stack ----
+
+    @Test
+    public void testIssuanceWitnessPP1CleanStack() throws Exception {
+        Transaction issuanceTx = issueRnftToBob();
+
+        Transaction witnessTx = createWitness(
+                bobSigningCallback(), bobPub,
+                aliceFundingTx, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), RestrictedTokenAction.ISSUANCE);
+
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+
+        Script scriptSig = witnessTx.getInputs().get(1).getScriptSig();
+        Script scriptPubKey = issuanceTx.getOutputs().get(1).getScript();
+        long pp1Sats = issuanceTx.getOutputs().get(1).getAmount().longValue();
+
+        Interpreter interp = new Interpreter();
+        interp.correctlySpends(scriptSig, scriptPubKey, witnessTx, 1,
+                flags, Coin.valueOf(pp1Sats));
+
+        LinkedList<byte[]> stack = new LinkedList<>();
+        Interpreter.executeScript(witnessTx, 1, scriptSig, stack,
+                Coin.valueOf(pp1Sats), flags);
+        Interpreter.executeScript(witnessTx, 1, scriptPubKey, stack,
+                Coin.valueOf(pp1Sats), flags);
+        assertEquals("PP1 RNFT issuance witness must leave clean stack", 1, stack.size());
+    }
+
+    // ---- Test 8: Multiple flag values ----
 
     @Test
     public void testMultipleFlagValues() throws Exception {
