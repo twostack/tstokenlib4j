@@ -210,7 +210,7 @@ public class StateMachineTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1SmUnlocker(
                 action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), eventData,
+                getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 custRewardAmount, merchPayAmount, refundAmount,
                 null, null);
 
@@ -230,7 +230,7 @@ public class StateMachineTool {
         pp1Unlocker = buildPP1SmUnlocker(
                 action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), eventData,
+                getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 custRewardAmount, merchPayAmount, refundAmount,
                 null, null);
 
@@ -311,7 +311,7 @@ public class StateMachineTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1SmUnlocker(
                 action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), eventData,
+                getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
                 customerPubkey, customerSigBytes);
 
@@ -328,7 +328,7 @@ public class StateMachineTool {
         pp1Unlocker = buildPP1SmUnlocker(
                 action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), eventData,
+                getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
                 customerPubkey, customerSigBytes);
 
@@ -441,7 +441,7 @@ public class StateMachineTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder childTxBuilder = new TransactionBuilder()
@@ -566,7 +566,7 @@ public class StateMachineTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder childTxBuilder = new TransactionBuilder()
@@ -700,7 +700,7 @@ public class StateMachineTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder childTxBuilder = new TransactionBuilder()
@@ -825,7 +825,7 @@ public class StateMachineTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder childTxBuilder = new TransactionBuilder()
@@ -892,14 +892,14 @@ public class StateMachineTool {
             StateMachineAction action, byte[] preImage, byte[] pp2Output,
             PublicKey merchantPubkey, byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
-            byte[] fundingTxHash, byte[] eventData,
+            byte[] fundingOutpoint, byte[] eventData,
             long custRewardAmount, long merchPayAmount, long refundAmount,
             PublicKey customerPubKey, byte[] customerSigBytes) {
 
         switch (action) {
             case CREATE:
                 // Rabin signing for CREATE will be added when Rabin params are plumbed through
-                return PP1SmUnlockBuilder.forCreate(preImage, fundingTxHash, paddingBytes,
+                return PP1SmUnlockBuilder.forCreate(preImage, fundingOutpoint, paddingBytes,
                         new byte[0], new byte[0], 0, new byte[0], new byte[0]);
             case ENROLL:
                 return PP1SmUnlockBuilder.forEnroll(

@@ -91,7 +91,7 @@ public class AppendableTokenTool {
             AppendableTokenAction action,
             byte[] stampMetadata)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
-        return createWitnessTxn(fundingSigner, fundingPubKey, fundingTx, tokenTx,
+        return createWitnessTxn(fundingSigner, fundingPubKey, fundingTx, 1, tokenTx,
                 parentTokenTxBytes, pubkey, tokenChangePKH, action, stampMetadata,
                 null, null, 0, null, null);
     }
@@ -100,6 +100,28 @@ public class AppendableTokenTool {
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             Transaction fundingTx,
+            Transaction tokenTx,
+            byte[] parentTokenTxBytes,
+            PublicKey pubkey,
+            byte[] tokenChangePKH,
+            AppendableTokenAction action,
+            byte[] stampMetadata,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
+            byte[] identityTxId,
+            byte[] ed25519PubKey)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createWitnessTxn(fundingSigner, fundingPubKey, fundingTx, 1, tokenTx,
+                parentTokenTxBytes, pubkey, tokenChangePKH, action, stampMetadata,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
+    }
+
+    public Transaction createWitnessTxn(
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
+            Transaction fundingTx,
+            int fundingVout,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
             PublicKey pubkey,
@@ -122,7 +144,7 @@ public class AppendableTokenTool {
 
         // First pass: build with empty PP1 unlocker to get preimage
         TransactionBuilder preImageBuilder = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE);
@@ -141,11 +163,11 @@ public class AppendableTokenTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), stampMetadata,
+                getOutpoint(fundingTx.getTransactionIdBytes()), stampMetadata,
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
@@ -157,11 +179,11 @@ public class AppendableTokenTool {
         pp1Unlocker = buildPP1AtUnlocker(
                 action, preImagePP1, pp2Output, pubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(), stampMetadata,
+                getOutpoint(fundingTx.getTransactionIdBytes()), stampMetadata,
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
-                .spendFromTransaction(signer, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(signer, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(signer, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
@@ -195,6 +217,24 @@ public class AppendableTokenTool {
             int threshold,
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createTokenIssuanceTxn(tokenFundingTx, 1, fundingSigner, fundingPubKey,
+                recipientAddress, witnessFundingTxId, witnessChangePKH, issuerPKH,
+                rabinPubKeyHash, threshold, metadataBytes);
+    }
+
+    public Transaction createTokenIssuanceTxn(
+            Transaction tokenFundingTx,
+            int fundingVout,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
+            Address recipientAddress,
+            byte[] witnessFundingTxId,
+            byte[] witnessChangePKH,
+            byte[] issuerPKH,
+            byte[] rabinPubKeyHash,
+            int threshold,
+            byte[] metadataBytes)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
@@ -206,7 +246,7 @@ public class AppendableTokenTool {
         // Initial stamps hash is 32 zero bytes (empty chain)
         byte[] initialStampsHash = new byte[32];
 
-        tokenTxBuilder.spendFromTransaction(fundingTxSigner, tokenFundingTx, 1,
+        tokenTxBuilder.spendFromTransaction(fundingTxSigner, tokenFundingTx, fundingVout,
                 TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker);
         tokenTxBuilder.withFeePerKb(1);
 
@@ -264,6 +304,27 @@ public class AppendableTokenTool {
             int threshold,
             byte[] stampsHash)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createTokenTransferTxn(prevWitnessTx, prevTokenTx, currentOwnerPubkey,
+                recipientAddress, fundingTx, 1, fundingSigner, fundingPubKey,
+                recipientWitnessFundingTxId, tokenId, issuerPKH, stampCount, threshold, stampsHash);
+    }
+
+    public Transaction createTokenTransferTxn(
+            Transaction prevWitnessTx,
+            Transaction prevTokenTx,
+            PublicKey currentOwnerPubkey,
+            Address recipientAddress,
+            Transaction fundingTx,
+            int fundingVout,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
+            byte[] recipientWitnessFundingTxId,
+            byte[] tokenId,
+            byte[] issuerPKH,
+            int stampCount,
+            int threshold,
+            byte[] stampsHash)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
@@ -290,7 +351,7 @@ public class AppendableTokenTool {
 
         // First pass: empty PP3 unlocker to get preimage
         TransactionBuilder childPreImageBuilder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
@@ -308,11 +369,11 @@ public class AppendableTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
@@ -364,6 +425,29 @@ public class AppendableTokenTool {
             int threshold,
             byte[] parentStampsHash)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createTokenStampTxn(prevWitnessTx, prevTokenTx, issuerPubkey,
+                fundingTx, 1, fundingSigner, fundingPubKey,
+                issuerWitnessFundingTxId, stampMetadata, ownerPKH, tokenId, issuerPKH,
+                parentStampCount, threshold, parentStampsHash);
+    }
+
+    public Transaction createTokenStampTxn(
+            Transaction prevWitnessTx,
+            Transaction prevTokenTx,
+            PublicKey issuerPubkey,
+            Transaction fundingTx,
+            int fundingVout,
+            SigningCallback fundingSigner,
+            PublicKey fundingPubKey,
+            byte[] issuerWitnessFundingTxId,
+            byte[] stampMetadata,
+            byte[] ownerPKH,
+            byte[] tokenId,
+            byte[] issuerPKH,
+            int parentStampCount,
+            int threshold,
+            byte[] parentStampsHash)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
@@ -387,8 +471,10 @@ public class AppendableTokenTool {
         PP1AtLockBuilder pp1LockBuilder = new PP1AtLockBuilder(ownerPKH, tokenId, issuerPKH,
                 rabinPubKeyHash, newStampCount, threshold, newStampsHash);
 
+        // PP2 witnessChangePKH must match the witness TX output (issuer signs the witness).
+        // ownerPKH is the token holder; issuerPKH is the stamp signer.
         PP2LockBuilder pp2Locker = new PP2LockBuilder(getOutpoint(issuerWitnessFundingTxId),
-                ownerPKH, 1, ownerPKH);
+                issuerPKH, 1, ownerPKH);
         PartialWitnessLockBuilder shaLocker = new PartialWitnessLockBuilder(ownerPKH);
 
         // Carry forward metadata from parent token tx (output[4])
@@ -400,7 +486,7 @@ public class AppendableTokenTool {
 
         // First pass: empty PP3 unlocker to get preimage
         TransactionBuilder childPreImageBuilder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
@@ -418,11 +504,11 @@ public class AppendableTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
                 .spendTo(pp1LockBuilder, BigInteger.ONE)
@@ -454,41 +540,15 @@ public class AppendableTokenTool {
             SigningCallback fundingCallback,
             PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
-
-        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
-        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
-
-        Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
-        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
-
-        TransactionBuilder builder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(ownerSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1AtUnlockBuilder.forBurn(ownerPubkey))
-                .spendFromTransaction(ownerSigner, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
-                .spendFromTransaction(ownerSigner, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
-                .sendChangeTo(ownerAddress);
-        builder.setFee(defaultFee);
-        return builder.build(false);
+        return createBurnTokenTxn(tokenTx, ownerCallback, ownerPubkey, fundingTx, 1, fundingCallback, fundingPubKey);
     }
 
-    /**
-     * Creates a redeem transaction for an AT token.
-     *
-     * <p>Owner signs. Burns the token (threshold must be met).
-     * Spends PP1_AT, PP2, and PartialWitness outputs.
-     *
-     * @param tokenTx          the token transaction to redeem
-     * @param ownerCallback    callback that signs sighash digests for the owner key
-     * @param ownerPubkey      the owner's public key
-     * @param fundingTx        the funding transaction
-     * @param fundingCallback  callback that signs sighash digests for the funding key
-     * @param fundingPubKey    public key corresponding to the funding signer
-     */
-    public Transaction createRedeemTokenTxn(
+    public Transaction createBurnTokenTxn(
             Transaction tokenTx,
             SigningCallback ownerCallback,
             PublicKey ownerPubkey,
             Transaction fundingTx,
+            int fundingVout,
             SigningCallback fundingCallback,
             PublicKey fundingPubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
@@ -500,7 +560,44 @@ public class AppendableTokenTool {
         P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
 
         TransactionBuilder builder = new TransactionBuilder()
-                .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(ownerSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1AtUnlockBuilder.forBurn(ownerPubkey))
+                .spendFromTransaction(ownerSigner, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
+                .spendFromTransaction(ownerSigner, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
+                .sendChangeTo(ownerAddress);
+        builder.setFee(defaultFee);
+        return builder.build(false);
+    }
+
+    public Transaction createRedeemTokenTxn(
+            Transaction tokenTx,
+            SigningCallback ownerCallback,
+            PublicKey ownerPubkey,
+            Transaction fundingTx,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+        return createRedeemTokenTxn(tokenTx, ownerCallback, ownerPubkey, fundingTx, 1, fundingCallback, fundingPubKey);
+    }
+
+    public Transaction createRedeemTokenTxn(
+            Transaction tokenTx,
+            SigningCallback ownerCallback,
+            PublicKey ownerPubkey,
+            Transaction fundingTx,
+            int fundingVout,
+            SigningCallback fundingCallback,
+            PublicKey fundingPubKey)
+            throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+
+        TransactionSigner ownerSigner = SignerAdapter.fromCallback(ownerCallback, ownerPubkey, sigHashAll);
+        TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingCallback, fundingPubKey, sigHashAll);
+
+        Address ownerAddress = Address.fromKey(networkAddressType, ownerPubkey);
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
+
+        TransactionBuilder builder = new TransactionBuilder()
+                .spendFromTransaction(fundingTxSigner, fundingTx, fundingVout, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(ownerSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, PP1AtUnlockBuilder.forRedeem(ownerPubkey))
                 .spendFromTransaction(ownerSigner, tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, PP2UnlockBuilder.forBurn(ownerPubkey))
                 .spendFromTransaction(ownerSigner, tokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, PartialWitnessUnlockBuilder.forBurn(ownerPubkey))
@@ -515,14 +612,14 @@ public class AppendableTokenTool {
             AppendableTokenAction action, byte[] preImage, byte[] pp2Output,
             PublicKey pubkey, byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
-            byte[] fundingTxHash, byte[] stampMetadata,
+            byte[] fundingOutpoint, byte[] stampMetadata,
             byte[] rabinN, byte[] rabinS, int rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
 
         switch (action) {
             case ISSUANCE:
                 return PP1AtUnlockBuilder.forIssuance(
-                        preImage, fundingTxHash, paddingBytes, pubkey,
+                        preImage, fundingOutpoint, paddingBytes, pubkey,
                         rabinN != null ? rabinN : new byte[0],
                         rabinS != null ? rabinS : new byte[0],
                         rabinPadding,

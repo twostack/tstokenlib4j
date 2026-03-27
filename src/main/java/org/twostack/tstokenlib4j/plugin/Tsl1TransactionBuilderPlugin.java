@@ -372,6 +372,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
 
             // ── AT ──
             case "at.issue" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 byte[] issuerPKH = pubKey.getPubKeyHash();
                 // The witness funding txid must be committed in PP2 at issuance time.
@@ -391,7 +392,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 // locked to the coordinator's signer key.
                 byte[] witnessChangePKH = pubKey.getPubKeyHash();
                 yield new AppendableTokenTool(networkAddressType).createTokenIssuanceTxn(
-                        fundingTx, signer, pubKey,
+                        fundingTx, fundingVout, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         witnessFundingTxId,
                         witnessChangePKH,
@@ -401,13 +402,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalHexBytes(params, "metadataBytes"));
             }
             case "at.transfer" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
                 yield new AppendableTokenTool(networkAddressType).createTokenTransferTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        fundingTx, signer, pubKey,
+                        fundingTx, fundingVout, signer, pubKey,
                         requireHexBytes(params, "recipientWitnessFundingTxId"),
                         requireHexBytes(params, "tokenId"),
                         requireHexBytes(params, "issuerPKH"),
@@ -416,6 +418,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "stampsHash"));
             }
             case "at.stamp" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
@@ -424,10 +427,20 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 byte[] parentPP1 = prevTokenTx.getOutputs().get(1).getScript().getProgram();
                 byte[] ownerPKH = new byte[20];
                 System.arraycopy(parentPP1, 1, ownerPKH, 0, 20);
+                // PP2 commits to the witness funding outpoint. The next available UTXO
+                // (index 1) will fund the stamp witness TX.
+                byte[] stampWitnessFundingTxId;
+                if (request.fundingUtxos().size() > 1) {
+                    stampWitnessFundingTxId = Utils.reverseBytes(
+                            Utils.HEX.decode(request.fundingUtxos().get(1).txid()));
+                } else {
+                    stampWitnessFundingTxId = optionalHexBytes(params, "issuerWitnessFundingTxId");
+                    if (stampWitnessFundingTxId == null) stampWitnessFundingTxId = new byte[32];
+                }
                 yield new AppendableTokenTool(networkAddressType).createTokenStampTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
-                        fundingTx, signer, pubKey,
-                        requireHexBytes(params, "issuerWitnessFundingTxId"),
+                        fundingTx, fundingVout, signer, pubKey,
+                        stampWitnessFundingTxId,
                         requireHexBytes(params, "stampMetadata"),
                         ownerPKH,
                         requireHexBytes(params, "tokenId"),
@@ -437,6 +450,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "parentStampsHash"));
             }
             case "at.witness" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 // Accept raw hex directly to avoid read-model race after issuance/stamp
                 String tokenTxRawHex = optionalString(params, "tokenTxRawHex");
@@ -458,7 +472,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 // tokenChangePKH must match the witness output lock (which uses pubKey),
                 // so derive it from the coordinator's pubKey rather than external params.
                 yield new AppendableTokenTool(networkAddressType).createWitnessTxn(
-                        signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
+                        signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, pubKey,
                         pubKey.getPubKeyHash(),
                         atAction,
                         optionalHexBytes(params, "stampMetadata"),
@@ -469,16 +483,18 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalHexBytes(params, "ed25519PubKey"));
             }
             case "at.burn" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 yield new AppendableTokenTool(networkAddressType).createBurnTokenTxn(
-                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+                        tokenTx, signer, pubKey, fundingTx, fundingVout, signer, pubKey);
             }
             case "at.redeem" -> {
+                int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 yield new AppendableTokenTool(networkAddressType).createRedeemTokenTxn(
-                        tokenTx, signer, pubKey, fundingTx, signer, pubKey);
+                        tokenTx, signer, pubKey, fundingTx, fundingVout, signer, pubKey);
             }
 
             // ── SM ──

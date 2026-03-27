@@ -33,7 +33,7 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
 
     private final AppendableTokenAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
     private final PublicKey ownerPubKey;
@@ -52,14 +52,14 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1AtUnlockBuilder(
             AppendableTokenAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
             byte[] stampMetadata) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
         this.ownerPubKey = ownerPubKey;
@@ -75,19 +75,19 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
      * before {@link #getUnlockingScript()} produces output.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint  36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @param issuerPubKey        public key of the token issuer
      * @return a new builder configured for issuance
      */
     public static PP1AtUnlockBuilder forIssuance(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             PublicKey issuerPubKey,
             byte[] rabinN, byte[] rabinS, int rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         PP1AtUnlockBuilder b = new PP1AtUnlockBuilder(
                 AppendableTokenAction.ISSUANCE,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 null, issuerPubKey, null, 0, null, null, null);
         b.rabinN = rabinN;
         b.rabinS = rabinS;
@@ -212,7 +212,7 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
         try {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
-            builder.data(witnessFundingTxId);
+            builder.data(witnessFundingOutpoint);
             builder.data(witnessPadding);
             builder.data(ownerPubKey.getPubKeyBytes());
             builder.data(getSignatures().get(0).toTxFormat());

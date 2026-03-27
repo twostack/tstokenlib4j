@@ -34,7 +34,7 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
 
     private final FungibleTokenAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
     private final PublicKey ownerPubKey;
@@ -66,7 +66,7 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1FtUnlockBuilder(
             FungibleTokenAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
@@ -76,7 +76,7 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
             byte[] prevTokenTxB, int parentOutputCountB, int parentPP1FtIndexB) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
         this.ownerPubKey = ownerPubKey;
@@ -100,17 +100,17 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
      * Creates a builder for the MINT action. No signature is required.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint  36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @return a new builder configured for minting
      */
     public static PP1FtUnlockBuilder forMint(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, int rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         PP1FtUnlockBuilder b = new PP1FtUnlockBuilder(
                 FungibleTokenAction.MINT,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 null, null, null, 0, null, null,
                 0, 0,
                 null, 0, 0, null, 0,
@@ -277,7 +277,7 @@ public class PP1FtUnlockBuilder extends UnlockingScriptBuilder {
     private Script buildMint() {
         ScriptBuilder builder = new ScriptBuilder();
         builder.data(preImage);
-        builder.data(witnessFundingTxId);
+        builder.data(witnessFundingOutpoint);
         builder.data(witnessPadding);
         builder.data(rabinN);
         builder.data(rabinS);

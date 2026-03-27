@@ -12,7 +12,7 @@ public class PP1NftUnlockBuilderTest {
     @Test
     public void testIssuanceProducesScript() {
         byte[] preImage = new byte[]{0x01, 0x02};
-        byte[] witnessFundingTxId = new byte[32];
+        byte[] witnessFundingOutpoint = new byte[36];
         byte[] witnessPadding = new byte[]{0x00};
         byte[] rabinN = new byte[]{0x03};
         byte[] rabinS = new byte[]{0x04};
@@ -20,7 +20,7 @@ public class PP1NftUnlockBuilderTest {
         byte[] ed25519PubKey = new byte[32];
 
         PP1NftUnlockBuilder builder = PP1NftUnlockBuilder.forIssuance(
-            preImage, witnessFundingTxId, witnessPadding,
+            preImage, witnessFundingOutpoint, witnessPadding,
             rabinN, rabinS, 0,
             identityTxId, ed25519PubKey
         );

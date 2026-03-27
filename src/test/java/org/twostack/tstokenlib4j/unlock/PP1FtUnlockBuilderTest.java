@@ -12,7 +12,7 @@ public class PP1FtUnlockBuilderTest {
     @Test
     public void testMintProducesScript() {
         byte[] preImage = new byte[]{0x01, 0x02};
-        byte[] witnessFundingTxId = new byte[32];
+        byte[] witnessFundingOutpoint = new byte[36];
         byte[] witnessPadding = new byte[]{0x00};
 
         byte[] rabinN = new byte[64];
@@ -20,7 +20,7 @@ public class PP1FtUnlockBuilderTest {
         byte[] identityTxId = new byte[32];
         byte[] ed25519PubKey = new byte[32];
 
-        PP1FtUnlockBuilder builder = PP1FtUnlockBuilder.forMint(preImage, witnessFundingTxId, witnessPadding,
+        PP1FtUnlockBuilder builder = PP1FtUnlockBuilder.forMint(preImage, witnessFundingOutpoint, witnessPadding,
                 rabinN, rabinS, 0, identityTxId, ed25519PubKey);
         Script script = builder.getUnlockingScript();
         List<ScriptChunk> chunks = script.getChunks();

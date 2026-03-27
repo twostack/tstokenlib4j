@@ -31,7 +31,7 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
 
     private final RestrictedTokenAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
     private final PublicKey ownerPubKey;
@@ -49,7 +49,7 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1RnftUnlockBuilder(
             RestrictedTokenAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
@@ -57,7 +57,7 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] identityTxId, byte[] ed25519PubKey) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
         this.ownerPubKey = ownerPubKey;
@@ -76,7 +76,7 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
      * Creates a builder for the ISSUANCE action. No signature is required.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint  36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @param rabinN              Rabin signature public key N component
      * @param rabinS              Rabin signature S component
@@ -86,12 +86,12 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for issuance
      */
     public static PP1RnftUnlockBuilder forIssuance(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         return new PP1RnftUnlockBuilder(
                 RestrictedTokenAction.ISSUANCE,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 null, null, null, 0, null, null,
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
     }
@@ -181,7 +181,7 @@ public class PP1RnftUnlockBuilder extends UnlockingScriptBuilder {
     private Script buildIssuance() {
         ScriptBuilder builder = new ScriptBuilder();
         builder.data(preImage);
-        builder.data(witnessFundingTxId);
+        builder.data(witnessFundingOutpoint);
         builder.data(witnessPadding);
         builder.data(rabinN);
         builder.data(rabinS);

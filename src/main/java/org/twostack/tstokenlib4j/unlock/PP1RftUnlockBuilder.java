@@ -34,7 +34,7 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
 
     private final RestrictedFungibleTokenAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
     private final PublicKey ownerPubKey;
@@ -71,7 +71,7 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1RftUnlockBuilder(
             RestrictedFungibleTokenAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] pp2Output, PublicKey ownerPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
@@ -84,7 +84,7 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] transferRecipientPKH, byte[] merkleProof, byte[] merkleSides) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
         this.ownerPubKey = ownerPubKey;
@@ -116,7 +116,7 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
      * Creates a builder for the MINT action. No signature is required.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint  36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @param rabinN              Rabin signature public key N component
      * @param rabinS              Rabin signature S component
@@ -126,12 +126,12 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for minting
      */
     public static PP1RftUnlockBuilder forMint(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         return new PP1RftUnlockBuilder(
                 RestrictedFungibleTokenAction.MINT,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 null, null, null, 0, null, null,
                 0, 0,
                 null, 0, 0, null, 0,
@@ -325,7 +325,7 @@ public class PP1RftUnlockBuilder extends UnlockingScriptBuilder {
     private Script buildMint() {
         ScriptBuilder builder = new ScriptBuilder();
         builder.data(preImage);
-        builder.data(witnessFundingTxId);
+        builder.data(witnessFundingOutpoint);
         builder.data(witnessPadding);
         builder.data(rabinN);
         builder.data(rabinS);

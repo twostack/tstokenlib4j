@@ -31,7 +31,7 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
 
     private final TokenAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] rabinN;
     private final byte[] rabinS;
@@ -47,7 +47,7 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1NftUnlockBuilder(
             TokenAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey,
             byte[] pp2Output, PublicKey ownerPubKey,
@@ -55,7 +55,7 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
             byte[] tokenLHS, byte[] prevTokenTx) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.rabinN = rabinN;
         this.rabinS = rabinS;
@@ -74,7 +74,7 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
      * Creates a builder for the ISSUANCE action. No signature is required.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint 36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @param rabinN              Rabin signature public key N component
      * @param rabinS              Rabin signature S component
@@ -84,12 +84,12 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for issuance
      */
     public static PP1NftUnlockBuilder forIssuance(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         return new PP1NftUnlockBuilder(
                 TokenAction.ISSUANCE,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 rabinN, rabinS, rabinPadding,
                 identityTxId, ed25519PubKey,
                 null, null, null, 0, null, null);
@@ -166,7 +166,7 @@ public class PP1NftUnlockBuilder extends UnlockingScriptBuilder {
     private Script buildIssuance() {
         ScriptBuilder builder = new ScriptBuilder();
         builder.data(preImage);
-        builder.data(witnessFundingTxId);
+        builder.data(witnessFundingOutpoint);
         builder.data(witnessPadding);
         builder.data(rabinN);
         builder.data(rabinS);

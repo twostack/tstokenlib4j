@@ -31,19 +31,19 @@ public class PartialWitnessFtUnlockBuilder extends UnlockingScriptBuilder {
     private final byte[] preImage;
     private final byte[] partialHash;
     private final byte[] partialWitnessPreImage;
-    private final byte[] fundingTxId;
+    private final byte[] fundingOutpoint;
     private final PublicKey ownerPubKey;
 
     private PartialWitnessFtUnlockBuilder(
             FungibleTokenAction action,
             byte[] preImage, byte[] partialHash,
-            byte[] partialWitnessPreImage, byte[] fundingTxId,
+            byte[] partialWitnessPreImage, byte[] fundingOutpoint,
             PublicKey ownerPubKey) {
         this.action = action;
         this.preImage = preImage;
         this.partialHash = partialHash;
         this.partialWitnessPreImage = partialWitnessPreImage;
-        this.fundingTxId = fundingTxId;
+        this.fundingOutpoint = fundingOutpoint;
         this.ownerPubKey = ownerPubKey;
     }
 
@@ -53,15 +53,15 @@ public class PartialWitnessFtUnlockBuilder extends UnlockingScriptBuilder {
      * @param preImage                sighash preimage of the transaction for OP_PUSH_TX validation
      * @param partialHash             partial hash for witness verification
      * @param partialWitnessPreImage  preimage for partial witness hash verification
-     * @param fundingTxId             transaction ID of the funding input
+     * @param fundingOutpoint         36-byte outpoint (txid + vout LE) of the funding input
      * @return a new builder configured for FT partial witness unlock
      */
     public static PartialWitnessFtUnlockBuilder forUnlock(
             byte[] preImage, byte[] partialHash,
-            byte[] partialWitnessPreImage, byte[] fundingTxId) {
+            byte[] partialWitnessPreImage, byte[] fundingOutpoint) {
         return new PartialWitnessFtUnlockBuilder(
                 FungibleTokenAction.MINT,
-                preImage, partialHash, partialWitnessPreImage, fundingTxId,
+                preImage, partialHash, partialWitnessPreImage, fundingOutpoint,
                 null);
     }
 
@@ -105,7 +105,7 @@ public class PartialWitnessFtUnlockBuilder extends UnlockingScriptBuilder {
         builder.data(preImage);
         builder.data(partialHash);
         builder.data(partialWitnessPreImage);
-        builder.data(fundingTxId);
+        builder.data(fundingOutpoint);
         builder.number(0);
         return builder.build();
     }

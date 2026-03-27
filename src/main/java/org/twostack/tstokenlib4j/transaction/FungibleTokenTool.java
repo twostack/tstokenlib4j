@@ -199,7 +199,7 @@ public class FungibleTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessFtUnlockBuilder pp3FtUnlocker = PartialWitnessFtUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3-FT unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
@@ -307,7 +307,7 @@ public class FungibleTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessFtUnlockBuilder pp3FtUnlocker = PartialWitnessFtUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3-FT unlocker
         TransactionBuilder finalBuilder = new TransactionBuilder()
@@ -485,7 +485,7 @@ public class FungibleTokenTool {
         UnlockingScriptBuilder pp1FtUnlocker = buildPP1FtUnlocker(
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
+                parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
                 sendAmount, changeAmount, recipientPKH);
 
@@ -498,7 +498,7 @@ public class FungibleTokenTool {
         pp1FtUnlocker = buildPP1FtUnlocker(
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
+                parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
                 sendAmount, changeAmount, recipientPKH);
 
@@ -561,7 +561,7 @@ public class FungibleTokenTool {
             byte[] paddingBytes,
             int parentOutputCount,
             int tripletBaseIndex,
-            byte[] fundingTxHash,
+            byte[] fundingOutpoint,
             byte[] parentTokenTxBytesB,
             int parentOutputCountB,
             int parentPP1FtIndexA,
@@ -575,7 +575,7 @@ public class FungibleTokenTool {
 
         if (action == FungibleTokenAction.MINT) {
             // Rabin signing for MINT will be added when Rabin params are plumbed through
-            return PP1FtUnlockBuilder.forMint(preImage, fundingTxHash, paddingBytes,
+            return PP1FtUnlockBuilder.forMint(preImage, fundingOutpoint, paddingBytes,
                     new byte[0], new byte[0], 0, new byte[0], new byte[0]);
         } else if (action == FungibleTokenAction.TRANSFER) {
             byte[] pp2Output = tokenTx.getOutputs().get(pp2Index).serialize();

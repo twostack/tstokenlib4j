@@ -110,7 +110,7 @@ public class RestrictedTokenTool {
         UnlockingScriptBuilder pp1Unlocker = buildPP1RnftUnlocker(
                 action, preImagePP1, pp2Output, ownerPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(),
+                getOutpoint(fundingTx.getTransactionIdBytes()),
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = new TransactionBuilder()
@@ -126,7 +126,7 @@ public class RestrictedTokenTool {
         pp1Unlocker = buildPP1RnftUnlocker(
                 action, preImagePP1, pp2Output, ownerPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                fundingTx.getTransactionIdBytes(),
+                getOutpoint(fundingTx.getTransactionIdBytes()),
                 rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = new TransactionBuilder()
@@ -238,7 +238,7 @@ public class RestrictedTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessUnlockBuilder sha256Unlocker = PartialWitnessUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3 unlocker
         return new TransactionBuilder()
@@ -319,13 +319,13 @@ public class RestrictedTokenTool {
             RestrictedTokenAction action, byte[] preImage, byte[] pp2Output,
             PublicKey ownerPubkey, byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
-            byte[] fundingTxHash,
+            byte[] fundingOutpoint,
             byte[] rabinN, byte[] rabinS, long rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
 
         if (action == RestrictedTokenAction.ISSUANCE) {
             return PP1RnftUnlockBuilder.forIssuance(
-                    preImage, fundingTxHash, paddingBytes,
+                    preImage, fundingOutpoint, paddingBytes,
                     rabinN, rabinS, rabinPadding,
                     identityTxId, ed25519PubKey);
         } else {

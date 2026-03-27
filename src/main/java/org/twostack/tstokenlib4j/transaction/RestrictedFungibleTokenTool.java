@@ -287,7 +287,7 @@ public class RestrictedFungibleTokenTool {
         UnlockingScriptBuilder pp1RftUnlocker = buildPP1RftUnlocker(
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
+                parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH,
@@ -302,7 +302,7 @@ public class RestrictedFungibleTokenTool {
         pp1RftUnlocker = buildPP1RftUnlocker(
                 action, preImage, tokenTx, ownerPubkey, tokenChangePKH,
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
-                parentOutputCount, tripletBaseIndex, fundingTx.getTransactionIdBytes(),
+                parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentPP1FtIndex, rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey,
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexB,
                 recipientAmount, tokenChangeAmount, recipientPKH,
@@ -396,7 +396,7 @@ public class RestrictedFungibleTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessFtUnlockBuilder pp3FtUnlocker = PartialWitnessFtUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3-FT unlocker
         return new TransactionBuilder()
@@ -508,7 +508,7 @@ public class RestrictedFungibleTokenTool {
         byte[][] partialResult = tsl1.computePartialHash(prevWitnessTx.serialize(), 2);
 
         PartialWitnessFtUnlockBuilder pp3FtUnlocker = PartialWitnessFtUnlockBuilder.forUnlock(
-                sigPreImage, partialResult[0], partialResult[1], fundingTx.getTransactionIdBytes());
+                sigPreImage, partialResult[0], partialResult[1], getOutpoint(fundingTx.getTransactionIdBytes()));
 
         // Final build with PP3-FT unlocker
         return new TransactionBuilder()
@@ -641,7 +641,7 @@ public class RestrictedFungibleTokenTool {
             byte[] paddingBytes,
             int parentOutputCount,
             int tripletBaseIndex,
-            byte[] fundingTxHash,
+            byte[] fundingOutpoint,
             int parentPP1FtIndex,
             byte[] rabinN,
             byte[] rabinS,
@@ -663,7 +663,7 @@ public class RestrictedFungibleTokenTool {
         if (action == RestrictedFungibleTokenAction.MINT) {
             // Rabin signature is pre-computed by the caller. The tool never sees the private key.
             return PP1RftUnlockBuilder.forMint(
-                    preImage, fundingTxHash, paddingBytes,
+                    preImage, fundingOutpoint, paddingBytes,
                     rabinN, rabinS, rabinPadding,
                     identityTxId, ed25519PubKey);
 

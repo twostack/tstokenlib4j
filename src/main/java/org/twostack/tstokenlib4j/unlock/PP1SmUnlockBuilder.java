@@ -35,7 +35,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
 
     private final StateMachineAction action;
     private final byte[] preImage;
-    private final byte[] witnessFundingTxId;
+    private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
     private final PublicKey merchantPubKey;
@@ -65,7 +65,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
 
     private PP1SmUnlockBuilder(
             StateMachineAction action,
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] pp2Output, PublicKey merchantPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
@@ -75,7 +75,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             long refundAmount) {
         this.action = action;
         this.preImage = preImage;
-        this.witnessFundingTxId = witnessFundingTxId;
+        this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
         this.merchantPubKey = merchantPubKey;
@@ -95,17 +95,17 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * Creates a builder for the CREATE action. No signature is required.
      *
      * @param preImage            sighash preimage of the transaction for OP_PUSH_TX validation
-     * @param witnessFundingTxId  transaction ID of the witness funding UTXO
+     * @param witnessFundingOutpoint  36-byte outpoint (txid + vout LE) of the witness funding UTXO
      * @param witnessPadding      padding bytes for witness transaction alignment
      * @return a new builder configured for state machine creation
      */
     public static PP1SmUnlockBuilder forCreate(
-            byte[] preImage, byte[] witnessFundingTxId, byte[] witnessPadding,
+            byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
             byte[] rabinN, byte[] rabinS, int rabinPadding,
             byte[] identityTxId, byte[] ed25519PubKey) {
         PP1SmUnlockBuilder b = new PP1SmUnlockBuilder(
                 StateMachineAction.CREATE,
-                preImage, witnessFundingTxId, witnessPadding,
+                preImage, witnessFundingOutpoint, witnessPadding,
                 null, null, null, 0, null, null,
                 null, null, null, 0, 0, 0);
         b.rabinN = rabinN;
@@ -317,7 +317,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     private Script buildCreate() {
         ScriptBuilder builder = new ScriptBuilder();
         builder.data(preImage);
-        builder.data(witnessFundingTxId);
+        builder.data(witnessFundingOutpoint);
         builder.data(witnessPadding);
         builder.data(rabinN);
         builder.data(rabinS);
