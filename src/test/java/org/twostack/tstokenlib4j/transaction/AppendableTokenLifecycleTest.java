@@ -103,6 +103,21 @@ public class AppendableTokenLifecycleTest {
         return sighash -> issuerPrivateKey.sign(sighash);
     }
 
+    /**
+     * A 3-arg SigningCallback that mimics the actor signing path:
+     * resolves the address from the locking script, then signs with the
+     * issuer's key (since issuer == owner in this test).
+     */
+    private SigningCallback issuerSigner3Arg() {
+        return new SigningCallback() {
+            @Override public byte[] sign(byte[] sighash) { return issuerPrivateKey.sign(sighash); }
+            @Override public byte[] sign(byte[] sighash, int inputIndex, byte[] scriptPubKey) {
+                // In this test issuer == owner, so always use the issuer key
+                return issuerPrivateKey.sign(sighash);
+            }
+        };
+    }
+
     private static byte[] sha256(byte[] input) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(input);
@@ -368,5 +383,52 @@ public class AppendableTokenLifecycleTest {
 
         // Verify witness PP2 spend (input 2 spends stamp2Tx output 2)
         verifySpend(stamp2Witness, 2, stamp2Tx, 2);
+    }
+
+    /**
+     * Same as testFullStampLifecycle but uses the 3-arg SigningCallback path
+     * (InputIndexAwareTransactionSigner with scriptPubKey passthrough).
+     * This exercises the same code path as the actor-based signing chain.
+     */
+    @Test
+    public void testIssuanceWitness_3argSigningPath() throws Exception {
+        byte[] tokenId = fundingTx.getTransactionIdBytes();
+        byte[] issuerPKH = issuerAddress.getHash();
+
+        Transaction issuanceTx = atTool.createTokenIssuanceTxn(
+                fundingTx,
+                issuerSigner3Arg(),
+                issuerPub,
+                issuerAddress,
+                fundingTx2.getTransactionIdBytes(),
+                issuerPKH,
+                issuerPKH,
+                rabinPubKeyHash,
+                THRESHOLD,
+                "test-token".getBytes());
+
+        assertEquals(5, issuanceTx.getOutputs().size());
+
+        Transaction issuanceWitness = atTool.createWitnessTxn(
+                issuerSigner3Arg(),
+                issuerPub,
+                fundingTx2,
+                issuanceTx,
+                new byte[0],
+                issuerPub,
+                issuerPKH,
+                AppendableTokenAction.ISSUANCE,
+                null,
+                rabinNBytes,
+                rabinSBytes,
+                rabinPaddingValue,
+                dummyIdentityTxId,
+                dummyEd25519PubKey);
+
+        assertEquals(1, issuanceWitness.getOutputs().size());
+
+        // PP1 and PP2 must both pass with the 3-arg signing path
+        verifySpend(issuanceWitness, 1, issuanceTx, 1);
+        verifySpend(issuanceWitness, 2, issuanceTx, 2);
     }
 }
