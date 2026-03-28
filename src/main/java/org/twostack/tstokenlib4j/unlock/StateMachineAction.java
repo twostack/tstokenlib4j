@@ -8,11 +8,11 @@ package org.twostack.tstokenlib4j.unlock;
  *
  * <ul>
  *   <li>{@link #CREATE} (0) — Create a new state machine token.</li>
- *   <li>{@link #ENROLL} (1) — Enroll a customer into the state machine flow.</li>
- *   <li>{@link #CONFIRM} (2) — Confirm a milestone (requires both merchant and customer signatures).</li>
- *   <li>{@link #CONVERT} (3) — Convert the state machine state (requires both merchant and customer signatures).</li>
- *   <li>{@link #SETTLE} (4) — Settle the state machine, distributing rewards and payments.</li>
- *   <li>{@link #TIMEOUT} (5) — Handle a timeout condition, processing refunds.</li>
+ *   <li>{@link #ENROLL} (1) — Enroll a counterparty into the state machine flow.</li>
+ *   <li>{@link #CONFIRM} (2) — Confirm a checkpoint (requires both operator and counterparty signatures).</li>
+ *   <li>{@link #CONVERT} (3) — Convert the state machine state (requires both operator and counterparty signatures).</li>
+ *   <li>{@link #SETTLE} (4) — Settle the state machine, distributing shares to operator and counterparty.</li>
+ *   <li>{@link #TIMEOUT} (5) — Handle a timeout condition, recovering value to operator.</li>
  *   <li>{@link #BURN} (6) — Permanently destroy the state machine token.</li>
  * </ul>
  *

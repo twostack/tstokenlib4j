@@ -36,6 +36,12 @@ public class PP1AtUnlockBuilder extends UnlockingScriptBuilder {
     private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
+    // NOTE: ownerPubKey and changePKH serve distinct roles in lock script execution.
+    // ownerPubKey (33-byte compressed pubkey) is consumed by OP_CHECKSIG to verify the
+    // transaction signature. changePKH (20-byte HASH160) is used for output-structure
+    // verification — the lock script checks that the token TX's change output pays to this
+    // hash via the sighash preimage. These cannot be consolidated because HASH160 is one-way
+    // and the lock script needs both forms at different execution stages.
     private final PublicKey ownerPubKey;
     private final byte[] changePKH;
     private final long changeAmount;

@@ -38,8 +38,8 @@ public class PP1ScriptTemplateTest {
             0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, (byte) 0xff
     };
 
-    private static final byte[] MERCHANT_PKH = RABIN_PKH;
-    private static final byte[] CUSTOMER_PKH = ISSUER_PKH;
+    private static final byte[] OPERATOR_PKH = RABIN_PKH;
+    private static final byte[] COUNTERPARTY_PKH = ISSUER_PKH;
 
     private static final byte[] STAMPS_HASH = new byte[32]; // zeros
     private static final byte[] COMMITMENT_HASH = new byte[32]; // zeros
@@ -58,7 +58,7 @@ public class PP1ScriptTemplateTest {
         nftScript = new PP1NftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH).getLockingScript();
         ftScript = new PP1FtLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 1000L).getLockingScript();
         atScript = new PP1AtLockBuilder(OWNER_PKH, TOKEN_ID, ISSUER_PKH, RABIN_PKH, 5, 10, STAMPS_HASH).getLockingScript();
-        smScript = new PP1SmLockBuilder(OWNER_PKH, TOKEN_ID, MERCHANT_PKH, CUSTOMER_PKH, RABIN_PKH,
+        smScript = new PP1SmLockBuilder(OWNER_PKH, TOKEN_ID, OPERATOR_PKH, COUNTERPARTY_PKH, RABIN_PKH,
                 1, 3, COMMITMENT_HASH, 0x3F, 144).getLockingScript();
         rnftScript = new PP1RnftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 7).getLockingScript();
         rftScript = new PP1RftLockBuilder(OWNER_PKH, TOKEN_ID, RABIN_PKH, 7, 5000L, 0, new byte[32]).getLockingScript();
@@ -167,10 +167,10 @@ public class PP1ScriptTemplateTest {
         PP1SmScriptInfo info = (PP1SmScriptInfo) new PP1SmTemplate().extractScriptInfo(smScript);
         assertArrayEquals(OWNER_PKH, info.getOwnerPKH());
         assertArrayEquals(TOKEN_ID, info.getTokenId());
-        assertArrayEquals(MERCHANT_PKH, info.getMerchantPKH());
-        assertArrayEquals(CUSTOMER_PKH, info.getCustomerPKH());
+        assertArrayEquals(OPERATOR_PKH, info.getOperatorPKH());
+        assertArrayEquals(COUNTERPARTY_PKH, info.getCounterpartyPKH());
         assertEquals(1, info.getCurrentState());
-        assertEquals(3, info.getMilestoneCount());
+        assertEquals(3, info.getCheckpointCount());
         assertArrayEquals(COMMITMENT_HASH, info.getCommitmentHash());
         assertEquals(0x3F, info.getTransitionBitmask());
         assertEquals(144, info.getTimeoutDelta());

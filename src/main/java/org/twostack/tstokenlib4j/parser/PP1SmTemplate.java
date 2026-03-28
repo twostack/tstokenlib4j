@@ -11,16 +11,16 @@ import java.util.List;
  *
  * <p>Layout after the 54-byte common prefix:
  * <pre>
- *   byte[54]       = 0x14 (push 20: merchantPKH)
- *   byte[55..74]   = merchantPKH
- *   byte[75]       = 0x14 (push 20: customerPKH)
- *   byte[76..95]   = customerPKH
+ *   byte[54]       = 0x14 (push 20: operatorPKH)
+ *   byte[55..74]   = operatorPKH
+ *   byte[75]       = 0x14 (push 20: counterpartyPKH)
+ *   byte[76..95]   = counterpartyPKH
  *   byte[96]       = 0x14 (push 20: rabinPubKeyHash)
  *   byte[97..116]  = rabinPubKeyHash
  *   byte[117]      = 0x01 (push 1: currentState)
  *   byte[118]      = currentState
- *   byte[119]      = 0x01 (push 1: milestoneCount)
- *   byte[120]      = milestoneCount
+ *   byte[119]      = 0x01 (push 1: checkpointCount)
+ *   byte[120]      = checkpointCount
  *   byte[121]      = 0x20 (push 32: commitmentHash)
  *   byte[122..153] = commitmentHash
  *   byte[154]      = 0x01 (push 1: transitionBitmask)
@@ -42,7 +42,7 @@ public class PP1SmTemplate implements ScriptTemplate {
     public boolean matches(Script script) {
         byte[] p = script.getProgram();
         if (!PP1TemplateBase.hasValidPrefix(p, MIN_LEN)) return false;
-        // Three consecutive 0x14 pushes (merchantPKH, customerPKH, rabinPKH)
+        // Three consecutive 0x14 pushes (operatorPKH, counterpartyPKH, rabinPKH)
         return p[54] == PP1TemplateBase.PUSH_20
                 && p[75] == PP1TemplateBase.PUSH_20
                 && p[96] == PP1TemplateBase.PUSH_20;
@@ -68,11 +68,11 @@ public class PP1SmTemplate implements ScriptTemplate {
         return new PP1SmScriptInfo(
                 PP1TemplateBase.extractOwnerPKH(p),
                 PP1TemplateBase.extractTokenId(p),
-                PP1TemplateBase.extractBytes(p, 55, 20),   // merchantPKH
-                PP1TemplateBase.extractBytes(p, 76, 20),   // customerPKH
+                PP1TemplateBase.extractBytes(p, 55, 20),   // operatorPKH
+                PP1TemplateBase.extractBytes(p, 76, 20),   // counterpartyPKH
                 PP1TemplateBase.extractBytes(p, 97, 20),   // rabinPubKeyHash
                 p[118] & 0xFF,                              // currentState (shifted +21)
-                p[120] & 0xFF,                              // milestoneCount (shifted +21)
+                p[120] & 0xFF,                              // checkpointCount (shifted +21)
                 PP1TemplateBase.extractBytes(p, 122, 32),  // commitmentHash (shifted +21)
                 p[155] & 0xFF,                              // transitionBitmask (shifted +21)
                 PP1TemplateBase.readLeUint32(p, 157)       // timeoutDelta (shifted +21)

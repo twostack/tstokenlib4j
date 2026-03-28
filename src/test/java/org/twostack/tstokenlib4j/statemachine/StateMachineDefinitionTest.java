@@ -16,7 +16,7 @@ public class StateMachineDefinitionTest {
         StateMachineDefinition def = StateMachineDefinitions.pp1SmFunnel();
 
         assertThat(def.name()).isEqualTo("PP1_SM_Funnel");
-        assertThat(def.description()).isEqualTo("The PP1 state machine funnel (marketing/escrow)");
+        assertThat(def.description()).isEqualTo("The PP1 state machine funnel");
         assertThat(def.roles()).hasSize(3);
         assertThat(def.states()).hasSize(6);
         assertThat(def.transitions()).hasSize(5);
@@ -28,12 +28,12 @@ public class StateMachineDefinitionTest {
     public void rolesDeserializeCorrectly() {
         StateMachineDefinition def = StateMachineDefinitions.pp1SmFunnel();
 
-        RoleDef merchant = def.roles().get("merchant");
-        assertThat(merchant.name()).isEqualTo("merchant");
-        assertThat(merchant.authType()).isEqualTo(AuthType.PKH);
+        RoleDef operator = def.roles().get("operator");
+        assertThat(operator.name()).isEqualTo("operator");
+        assertThat(operator.authType()).isEqualTo(AuthType.PKH);
 
-        RoleDef customer = def.roles().get("customer");
-        assertThat(customer.authType()).isEqualTo(AuthType.PKH);
+        RoleDef counterparty = def.roles().get("counterparty");
+        assertThat(counterparty.authType()).isEqualTo(AuthType.PKH);
 
         RoleDef rabin = def.roles().get("rabin");
         assertThat(rabin.authType()).isEqualTo(AuthType.Rabin);
@@ -69,14 +69,14 @@ public class StateMachineDefinitionTest {
                 .filter(t -> t.name().equals("enroll")).findFirst().orElseThrow();
         assertThat(enroll.fromStates()).containsExactly("CREATED");
         assertThat(enroll.toState()).isEqualTo("ENROLLED");
-        assertThat(enroll.requiredSigners()).containsExactly("merchant");
-        assertThat(enroll.ownerAfter()).isEqualTo("merchant");
+        assertThat(enroll.requiredSigners()).containsExactly("operator");
+        assertThat(enroll.ownerAfter()).isEqualTo("operator");
         assertThat(enroll.usesTimelock()).isFalse();
 
         TransitionDef confirm = def.transitions().stream()
                 .filter(t -> t.name().equals("confirm")).findFirst().orElseThrow();
         assertThat(confirm.fromStates()).containsExactly("ENROLLED", "CONFIRMED");
-        assertThat(confirm.requiredSigners()).containsExactly("merchant", "customer");
+        assertThat(confirm.requiredSigners()).containsExactly("operator", "counterparty");
         assertThat(confirm.effects()).hasSize(2);
         assertThat(confirm.effects().get(0).type()).isEqualTo(EffectType.INCREMENT);
         assertThat(confirm.effects().get(1).type()).isEqualTo(EffectType.HASH_CHAIN);
@@ -96,7 +96,7 @@ public class StateMachineDefinitionTest {
         assertThat(convert.guards().get(0)).isInstanceOf(GuardDef.FieldGuardDef.class);
 
         GuardDef.FieldGuardDef guard = (GuardDef.FieldGuardDef) convert.guards().get(0);
-        assertThat(guard.fieldName()).isEqualTo("milestoneCount");
+        assertThat(guard.fieldName()).isEqualTo("checkpointCount");
         assertThat(guard.op()).isEqualTo(GuardOp.GT);
         assertThat(guard.constant()).isEqualTo(0);
     }
@@ -105,9 +105,9 @@ public class StateMachineDefinitionTest {
     public void customFieldsDeserializeCorrectly() {
         StateMachineDefinition def = StateMachineDefinitions.pp1SmFunnel();
 
-        assertThat(def.customFields()).containsKey("milestoneCount");
-        FieldDef mc = def.customFields().get("milestoneCount");
-        assertThat(mc.name()).isEqualTo("milestoneCount");
+        assertThat(def.customFields()).containsKey("checkpointCount");
+        FieldDef mc = def.customFields().get("checkpointCount");
+        assertThat(mc.name()).isEqualTo("checkpointCount");
         assertThat(mc.byteSize()).isEqualTo(1);
         assertThat(mc.type()).isEqualTo(FieldType.COUNTER);
         assertThat(mc.mutable()).isTrue();

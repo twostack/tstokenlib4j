@@ -14,10 +14,10 @@ import java.io.IOException;
  * <ul>
  *   <li>{@link StateMachineAction#CREATE} -- initial state machine creation</li>
  *   <li>{@link StateMachineAction#ENROLL} -- enroll a participant into the state machine</li>
- *   <li>{@link StateMachineAction#CONFIRM} -- confirm a state transition (dual-signature with customer)</li>
- *   <li>{@link StateMachineAction#CONVERT} -- convert the state machine state (dual-signature with customer)</li>
- *   <li>{@link StateMachineAction#SETTLE} -- settle the state machine with reward and payment amounts</li>
- *   <li>{@link StateMachineAction#TIMEOUT} -- timeout the state machine and issue a refund</li>
+ *   <li>{@link StateMachineAction#CONFIRM} -- confirm a state transition (dual-signature with counterparty)</li>
+ *   <li>{@link StateMachineAction#CONVERT} -- convert the state machine state (dual-signature with counterparty)</li>
+ *   <li>{@link StateMachineAction#SETTLE} -- settle the state machine, distributing shares to operator and counterparty</li>
+ *   <li>{@link StateMachineAction#TIMEOUT} -- timeout the state machine and recover value to operator</li>
  *   <li>{@link StateMachineAction#BURN} -- permanent destruction of the token</li>
  * </ul>
  *
@@ -38,7 +38,13 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     private final byte[] witnessFundingOutpoint;
     private final byte[] witnessPadding;
     private final byte[] pp2Output;
-    private final PublicKey merchantPubKey;
+    // NOTE: operatorPubKey and changePKH serve distinct roles and may identify different parties.
+    // operatorPubKey (33-byte compressed pubkey) is consumed by OP_CHECKSIG to verify the
+    // transaction signature. changePKH (20-byte HASH160) is used for output-structure
+    // verification — the lock script checks that the token TX's change output pays to this
+    // hash via the sighash preimage. In dual-sig actions (CONFIRM, CONVERT), the operator
+    // signs but the counterparty may own the change output, so these are genuinely independent.
+    private final PublicKey operatorPubKey;
     private final byte[] changePKH;
     private final long changeAmount;
     private final byte[] tokenLHS;
@@ -46,15 +52,15 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     private final byte[] eventData;
 
     // CONFIRM/CONVERT dual-sig extras
-    private final PublicKey customerPubKey;
-    private final byte[] customerSigBytes;
+    private final PublicKey counterpartyPubKey;
+    private final byte[] counterpartySigBytes;
 
     // SETTLE extras
-    private final long custRewardAmount;
-    private final long merchPayAmount;
+    private final long counterpartyShareAmount;
+    private final long operatorShareAmount;
 
     // TIMEOUT extras
-    private final long refundAmount;
+    private final long recoveryAmount;
 
     // Rabin identity fields (CREATE only)
     private byte[] rabinN;
@@ -66,29 +72,29 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     private PP1SmUnlockBuilder(
             StateMachineAction action,
             byte[] preImage, byte[] witnessFundingOutpoint, byte[] witnessPadding,
-            byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx,
             byte[] eventData,
-            PublicKey customerPubKey, byte[] customerSigBytes,
-            long custRewardAmount, long merchPayAmount,
-            long refundAmount) {
+            PublicKey counterpartyPubKey, byte[] counterpartySigBytes,
+            long counterpartyShareAmount, long operatorShareAmount,
+            long recoveryAmount) {
         this.action = action;
         this.preImage = preImage;
         this.witnessFundingOutpoint = witnessFundingOutpoint;
         this.witnessPadding = witnessPadding;
         this.pp2Output = pp2Output;
-        this.merchantPubKey = merchantPubKey;
+        this.operatorPubKey = operatorPubKey;
         this.changePKH = changePKH;
         this.changeAmount = changeAmount;
         this.tokenLHS = tokenLHS;
         this.prevTokenTx = prevTokenTx;
         this.eventData = eventData;
-        this.customerPubKey = customerPubKey;
-        this.customerSigBytes = customerSigBytes;
-        this.custRewardAmount = custRewardAmount;
-        this.merchPayAmount = merchPayAmount;
-        this.refundAmount = refundAmount;
+        this.counterpartyPubKey = counterpartyPubKey;
+        this.counterpartySigBytes = counterpartySigBytes;
+        this.counterpartyShareAmount = counterpartyShareAmount;
+        this.operatorShareAmount = operatorShareAmount;
+        this.recoveryAmount = recoveryAmount;
     }
 
     /**
@@ -122,7 +128,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      *
      * @param preImage        sighash preimage of the transaction for OP_PUSH_TX validation
      * @param pp2Output       serialized PP2 witness output for output structure verification
-     * @param merchantPubKey  public key of the merchant (state machine owner)
+     * @param operatorPubKey  public key of the operator (state machine owner)
      * @param changePKH       20-byte HASH160 for witness change output
      * @param changeAmount    satoshi amount for witness change
      * @param eventData       event data bytes for state machine transitions
@@ -132,14 +138,14 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for enrollment
      */
     public static PP1SmUnlockBuilder forEnroll(
-            byte[] preImage, byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] preImage, byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
             byte[] eventData,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.ENROLL,
                 preImage, null, witnessPadding,
-                pp2Output, merchantPubKey, changePKH, changeAmount,
+                pp2Output, operatorPubKey, changePKH, changeAmount,
                 tokenLHS, prevTokenTx,
                 eventData, null, null, 0, 0, 0);
     }
@@ -147,15 +153,15 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
     /**
      * Creates a builder for the CONFIRM action. Requires {@link #addSignature(TransactionSignature)}
      * before {@link #getUnlockingScript()} produces output. This is a dual-signature action
-     * requiring both the merchant's signature (via addSignature) and the customer's signature bytes.
+     * requiring both the operator's signature (via addSignature) and the counterparty's signature bytes.
      *
      * @param preImage          sighash preimage of the transaction for OP_PUSH_TX validation
      * @param pp2Output         serialized PP2 witness output for output structure verification
-     * @param merchantPubKey    public key of the merchant (state machine owner)
+     * @param operatorPubKey    public key of the operator (state machine owner)
      * @param changePKH         20-byte HASH160 for witness change output
      * @param changeAmount      satoshi amount for witness change
-     * @param customerPubKey    customer's public key for dual-signature verification
-     * @param customerSigBytes  customer's signature bytes for dual-signature verification
+     * @param counterpartyPubKey    counterparty's public key for dual-signature verification
+     * @param counterpartySigBytes  counterparty's signature bytes for dual-signature verification
      * @param eventData         event data bytes for state machine transitions
      * @param tokenLHS          left-hand side of serialized token output for structure verification
      * @param prevTokenTx       raw bytes of previous token transaction for inductive proof
@@ -163,31 +169,31 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for confirmation
      */
     public static PP1SmUnlockBuilder forConfirm(
-            byte[] preImage, byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] preImage, byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
-            PublicKey customerPubKey, byte[] customerSigBytes,
+            PublicKey counterpartyPubKey, byte[] counterpartySigBytes,
             byte[] eventData,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.CONFIRM,
                 preImage, null, witnessPadding,
-                pp2Output, merchantPubKey, changePKH, changeAmount,
+                pp2Output, operatorPubKey, changePKH, changeAmount,
                 tokenLHS, prevTokenTx,
-                eventData, customerPubKey, customerSigBytes, 0, 0, 0);
+                eventData, counterpartyPubKey, counterpartySigBytes, 0, 0, 0);
     }
 
     /**
      * Creates a builder for the CONVERT action. Requires {@link #addSignature(TransactionSignature)}
      * before {@link #getUnlockingScript()} produces output. This is a dual-signature action
-     * requiring both the merchant's signature (via addSignature) and the customer's signature bytes.
+     * requiring both the operator's signature (via addSignature) and the counterparty's signature bytes.
      *
      * @param preImage          sighash preimage of the transaction for OP_PUSH_TX validation
      * @param pp2Output         serialized PP2 witness output for output structure verification
-     * @param merchantPubKey    public key of the merchant (state machine owner)
+     * @param operatorPubKey    public key of the operator (state machine owner)
      * @param changePKH         20-byte HASH160 for witness change output
      * @param changeAmount      satoshi amount for witness change
-     * @param customerPubKey    customer's public key for dual-signature verification
-     * @param customerSigBytes  customer's signature bytes for dual-signature verification
+     * @param counterpartyPubKey    counterparty's public key for dual-signature verification
+     * @param counterpartySigBytes  counterparty's signature bytes for dual-signature verification
      * @param eventData         event data bytes for state machine transitions
      * @param tokenLHS          left-hand side of serialized token output for structure verification
      * @param prevTokenTx       raw bytes of previous token transaction for inductive proof
@@ -195,17 +201,17 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for conversion
      */
     public static PP1SmUnlockBuilder forConvert(
-            byte[] preImage, byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] preImage, byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
-            PublicKey customerPubKey, byte[] customerSigBytes,
+            PublicKey counterpartyPubKey, byte[] counterpartySigBytes,
             byte[] eventData,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.CONVERT,
                 preImage, null, witnessPadding,
-                pp2Output, merchantPubKey, changePKH, changeAmount,
+                pp2Output, operatorPubKey, changePKH, changeAmount,
                 tokenLHS, prevTokenTx,
-                eventData, customerPubKey, customerSigBytes, 0, 0, 0);
+                eventData, counterpartyPubKey, counterpartySigBytes, 0, 0, 0);
     }
 
     /**
@@ -214,11 +220,11 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      *
      * @param preImage          sighash preimage of the transaction for OP_PUSH_TX validation
      * @param pp2Output         serialized PP2 witness output for output structure verification
-     * @param merchantPubKey    public key of the merchant (state machine owner)
+     * @param operatorPubKey    public key of the operator (state machine owner)
      * @param changePKH         20-byte HASH160 for witness change output
      * @param changeAmount      satoshi amount for witness change
-     * @param custRewardAmount  satoshi amount rewarded to the customer on settlement
-     * @param merchPayAmount    satoshi amount paid to the merchant on settlement
+     * @param counterpartyShareAmount  satoshi amount distributed to the counterparty on settlement
+     * @param operatorShareAmount    satoshi amount distributed to the operator on settlement
      * @param eventData         event data bytes for state machine transitions
      * @param tokenLHS          left-hand side of serialized token output for structure verification
      * @param prevTokenTx       raw bytes of previous token transaction for inductive proof
@@ -226,17 +232,17 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      * @return a new builder configured for settlement
      */
     public static PP1SmUnlockBuilder forSettle(
-            byte[] preImage, byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] preImage, byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
-            long custRewardAmount, long merchPayAmount,
+            long counterpartyShareAmount, long operatorShareAmount,
             byte[] eventData,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.SETTLE,
                 preImage, null, witnessPadding,
-                pp2Output, merchantPubKey, changePKH, changeAmount,
+                pp2Output, operatorPubKey, changePKH, changeAmount,
                 tokenLHS, prevTokenTx,
-                eventData, null, null, custRewardAmount, merchPayAmount, 0);
+                eventData, null, null, counterpartyShareAmount, operatorShareAmount, 0);
     }
 
     /**
@@ -245,40 +251,40 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
      *
      * @param preImage        sighash preimage of the transaction for OP_PUSH_TX validation
      * @param pp2Output       serialized PP2 witness output for output structure verification
-     * @param merchantPubKey  public key of the merchant (state machine owner)
+     * @param operatorPubKey  public key of the operator (state machine owner)
      * @param changePKH       20-byte HASH160 for witness change output
      * @param changeAmount    satoshi amount for witness change
-     * @param refundAmount    satoshi amount to refund on timeout
+     * @param recoveryAmount    satoshi amount to recover on timeout
      * @param tokenLHS        left-hand side of serialized token output for structure verification
      * @param prevTokenTx     raw bytes of previous token transaction for inductive proof
      * @param witnessPadding  padding bytes for witness transaction alignment
      * @return a new builder configured for timeout
      */
     public static PP1SmUnlockBuilder forTimeout(
-            byte[] preImage, byte[] pp2Output, PublicKey merchantPubKey,
+            byte[] preImage, byte[] pp2Output, PublicKey operatorPubKey,
             byte[] changePKH, long changeAmount,
-            long refundAmount,
+            long recoveryAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] witnessPadding) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.TIMEOUT,
                 preImage, null, witnessPadding,
-                pp2Output, merchantPubKey, changePKH, changeAmount,
+                pp2Output, operatorPubKey, changePKH, changeAmount,
                 tokenLHS, prevTokenTx,
-                null, null, null, 0, 0, refundAmount);
+                null, null, null, 0, 0, recoveryAmount);
     }
 
     /**
      * Creates a builder for the BURN action. Requires {@link #addSignature(TransactionSignature)}
      * before {@link #getUnlockingScript()} produces output.
      *
-     * @param merchantPubKey public key of the merchant (state machine owner)
+     * @param operatorPubKey public key of the operator (state machine owner)
      * @return a new builder configured for burn
      */
-    public static PP1SmUnlockBuilder forBurn(PublicKey merchantPubKey) {
+    public static PP1SmUnlockBuilder forBurn(PublicKey operatorPubKey) {
         return new PP1SmUnlockBuilder(
                 StateMachineAction.BURN,
                 null, null, null,
-                null, merchantPubKey, null, 0, null, null,
+                null, operatorPubKey, null, 0, null, null,
                 null, null, null, 0, 0, 0);
     }
 
@@ -336,7 +342,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
             builder.data(pp2Output);
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(changePKH);
             builder.number(changeAmount);
             builder.data(getSignatures().get(0).toTxFormat());
@@ -359,12 +365,12 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
             builder.data(pp2Output);
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(changePKH);
             builder.number(changeAmount);
             builder.data(getSignatures().get(0).toTxFormat());
-            builder.data(customerPubKey.getPubKeyBytes());
-            builder.data(customerSigBytes);
+            builder.data(counterpartyPubKey.getPubKeyBytes());
+            builder.data(counterpartySigBytes);
             builder.data(eventData);
             builder.data(tokenLHS);
             builder.data(prevTokenTx);
@@ -384,12 +390,12 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
             builder.data(pp2Output);
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(changePKH);
             builder.number(changeAmount);
             builder.data(getSignatures().get(0).toTxFormat());
-            builder.data(customerPubKey.getPubKeyBytes());
-            builder.data(customerSigBytes);
+            builder.data(counterpartyPubKey.getPubKeyBytes());
+            builder.data(counterpartySigBytes);
             builder.data(eventData);
             builder.data(tokenLHS);
             builder.data(prevTokenTx);
@@ -409,12 +415,12 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
             builder.data(pp2Output);
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(changePKH);
             builder.number(changeAmount);
             builder.data(getSignatures().get(0).toTxFormat());
-            builder.number(custRewardAmount);
-            builder.number(merchPayAmount);
+            builder.number(counterpartyShareAmount);
+            builder.number(operatorShareAmount);
             builder.data(eventData);
             builder.data(tokenLHS);
             builder.data(prevTokenTx);
@@ -434,11 +440,11 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
             ScriptBuilder builder = new ScriptBuilder();
             builder.data(preImage);
             builder.data(pp2Output);
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(changePKH);
             builder.number(changeAmount);
             builder.data(getSignatures().get(0).toTxFormat());
-            builder.number(refundAmount);
+            builder.number(recoveryAmount);
             builder.data(tokenLHS);
             builder.data(prevTokenTx);
             builder.data(witnessPadding);
@@ -455,7 +461,7 @@ public class PP1SmUnlockBuilder extends UnlockingScriptBuilder {
         }
         try {
             ScriptBuilder builder = new ScriptBuilder();
-            builder.data(merchantPubKey.getPubKeyBytes());
+            builder.data(operatorPubKey.getPubKeyBytes());
             builder.data(getSignatures().get(0).toTxFormat());
             builder.number(6);
             return builder.build();

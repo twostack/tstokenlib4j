@@ -1,16 +1,16 @@
 {
   "name": "PP1_SM_Funnel",
-  "description": "The PP1 state machine funnel (marketing/escrow)",
+  "description": "The PP1 state machine funnel",
   "roles": {
-    "merchant": {
-      "name": "merchant",
+    "operator": {
+      "name": "operator",
       "authType": "PKH",
-      "description": "Organization/merchant"
+      "description": "Organization/operator"
     },
-    "customer": {
-      "name": "customer",
+    "counterparty": {
+      "name": "counterparty",
       "authType": "PKH",
-      "description": "Customer/participant"
+      "description": "Counterparty/participant"
     },
     "rabin": {
       "name": "rabin",
@@ -31,8 +31,8 @@
       "name": "enroll",
       "fromStates": ["CREATED"],
       "toState": "ENROLLED",
-      "requiredSigners": ["merchant"],
-      "ownerAfter": "merchant",
+      "requiredSigners": ["operator"],
+      "ownerAfter": "operator",
       "guards": [],
       "effects": [],
       "usesTimelock": false
@@ -41,11 +41,11 @@
       "name": "confirm",
       "fromStates": ["ENROLLED", "CONFIRMED"],
       "toState": "CONFIRMED",
-      "requiredSigners": ["merchant", "customer"],
-      "ownerAfter": "merchant",
+      "requiredSigners": ["operator", "counterparty"],
+      "ownerAfter": "operator",
       "guards": [],
       "effects": [
-        {"fieldName": "milestoneCount", "type": "INCREMENT"},
+        {"fieldName": "checkpointCount", "type": "INCREMENT"},
         {"fieldName": "commitmentHash", "type": "HASH_CHAIN"}
       ],
       "usesTimelock": false
@@ -54,10 +54,10 @@
       "name": "convert",
       "fromStates": ["CONFIRMED"],
       "toState": "CONVERTED",
-      "requiredSigners": ["merchant", "customer"],
-      "ownerAfter": "merchant",
+      "requiredSigners": ["operator", "counterparty"],
+      "ownerAfter": "operator",
       "guards": [
-        {"type": "field", "fieldName": "milestoneCount", "op": "GT", "constant": 0}
+        {"type": "field", "fieldName": "checkpointCount", "op": "GT", "constant": 0}
       ],
       "effects": [
         {"fieldName": "commitmentHash", "type": "HASH_CHAIN"}
@@ -68,8 +68,8 @@
       "name": "settle",
       "fromStates": ["ENROLLED", "CONFIRMED", "CONVERTED"],
       "toState": "SETTLED",
-      "requiredSigners": ["merchant"],
-      "ownerAfter": "merchant",
+      "requiredSigners": ["operator"],
+      "ownerAfter": "operator",
       "guards": [],
       "effects": [],
       "usesTimelock": false
@@ -78,16 +78,16 @@
       "name": "timeout",
       "fromStates": ["ENROLLED", "CONFIRMED", "CONVERTED"],
       "toState": "TIMED_OUT",
-      "requiredSigners": ["merchant"],
-      "ownerAfter": "merchant",
+      "requiredSigners": ["operator"],
+      "ownerAfter": "operator",
       "guards": [],
       "effects": [],
       "usesTimelock": true
     }
   ],
   "customFields": {
-    "milestoneCount": {
-      "name": "milestoneCount",
+    "checkpointCount": {
+      "name": "checkpointCount",
       "byteSize": 1,
       "type": "COUNTER",
       "isMutable": true

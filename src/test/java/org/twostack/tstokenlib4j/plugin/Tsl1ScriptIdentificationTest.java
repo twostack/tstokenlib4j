@@ -127,11 +127,11 @@ public class Tsl1ScriptIdentificationTest {
 
         assertThat(metadata).containsEntry("scriptType", "pp1_sm");
         assertThat(metadata).containsEntry("currentState", 2);
-        assertThat(metadata).containsEntry("milestoneCount", 5);
+        assertThat(metadata).containsEntry("checkpointCount", 5);
         assertThat(metadata).containsEntry("transitionBitmask", 0x0F);
         assertThat(metadata).containsEntry("timeoutDelta", 3600);
-        assertThat(metadata).containsKey("merchantPKH");
-        assertThat(metadata).containsKey("customerPKH");
+        assertThat(metadata).containsKey("operatorPKH");
+        assertThat(metadata).containsKey("counterpartyPKH");
         assertThat(metadata).containsKey("commitmentHash");
     }
 

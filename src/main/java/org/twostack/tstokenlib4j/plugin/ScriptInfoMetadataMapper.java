@@ -46,11 +46,11 @@ final class ScriptInfoMetadataMapper {
             }
             case PP1SmScriptInfo sm -> {
                 putCommon(m, sm.getOwnerPKH(), sm.getTokenId(), "pp1_sm", networkAddressType);
-                m.put("merchantPKH", hex(sm.getMerchantPKH()));
-                m.put("customerPKH", hex(sm.getCustomerPKH()));
+                m.put("operatorPKH", hex(sm.getOperatorPKH()));
+                m.put("counterpartyPKH", hex(sm.getCounterpartyPKH()));
                 m.put("rabinPKH", hex(sm.getRabinPubKeyHash()));
                 m.put("currentState", sm.getCurrentState());
-                m.put("milestoneCount", sm.getMilestoneCount());
+                m.put("checkpointCount", sm.getCheckpointCount());
                 m.put("commitmentHash", hex(sm.getCommitmentHash()));
                 m.put("transitionBitmask", sm.getTransitionBitmask());
                 m.put("timeoutDelta", sm.getTimeoutDelta());

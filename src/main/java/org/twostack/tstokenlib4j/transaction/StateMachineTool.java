@@ -25,7 +25,7 @@ import java.security.NoSuchAlgorithmException;
  * High-level API for creating State Machine (SM) token transactions.
  *
  * <p>Supports: create (issuance), enroll, confirm, convert, settle, timeout, burn.
- * Dual authority model: merchant signs enroll/settle/timeout; both merchant and customer
+ * Dual authority model: operator signs enroll/settle/timeout; both operator and counterparty
  * sign confirm/convert. Owner (whoever is the next expected actor) signs burn.
  *
  * <p>All signing is performed via {@link SigningCallback}, which decouples
@@ -36,8 +36,8 @@ import java.security.NoSuchAlgorithmException;
  * <p>Transaction output structures:
  * <ul>
  *   <li>Issuance/Enroll/Transition: 5 outputs [Change, PP1_SM, PP2, PP3, Metadata]</li>
- *   <li>Settle: 7 outputs [Change, CustReward, MerchPay, PP1_SM, PP2, PP3, Metadata]</li>
- *   <li>Timeout: 6 outputs [Change, MerchRefund, PP1_SM, PP2, PP3, Metadata]</li>
+ *   <li>Settle: 7 outputs [Change, CounterpartyShare, OperatorShare, PP1_SM, PP2, PP3, Metadata]</li>
+ *   <li>Timeout: 6 outputs [Change, OperatorRecovery, PP1_SM, PP2, PP3, Metadata]</li>
  *   <li>Witness: 1 output [Witness]</li>
  *   <li>Burn: spends PP1_SM, PP2, PP3 to change</li>
  * </ul>
@@ -80,9 +80,9 @@ public class StateMachineTool {
      * @param tokenFundingTx      funds the issuance; its txid becomes the initial tokenId
      * @param fundingSigner       callback that signs sighash digests for the funding key
      * @param fundingPubKey       public key corresponding to the funding signer
-     * @param merchantAddress     the initial owner address (merchant creates the funnel)
-     * @param merchantPKH         20-byte HASH160 of the merchant's public key
-     * @param customerPKH         20-byte HASH160 of the customer's public key
+     * @param operatorAddress     the initial owner address (operator creates the state machine)
+     * @param operatorPKH         20-byte HASH160 of the operator's public key
+     * @param counterpartyPKH     20-byte HASH160 of the counterparty's public key
      * @param transitionBitmask   bitmask controlling which transitions are enabled
      * @param timeoutDelta        timeout delta in seconds
      * @param witnessFundingTxId  txid of the tx that will fund the first witness
@@ -92,9 +92,9 @@ public class StateMachineTool {
             Transaction tokenFundingTx,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
-            Address merchantAddress,
-            byte[] merchantPKH,
-            byte[] customerPKH,
+            Address operatorAddress,
+            byte[] operatorPKH,
+            byte[] counterpartyPKH,
             int transitionBitmask,
             int timeoutDelta,
             byte[] witnessFundingTxId,
@@ -116,22 +116,22 @@ public class StateMachineTool {
 
         // Output 1: PP1_SM
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                merchantPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
+                operatorPKH, tokenId, operatorPKH, counterpartyPKH, rabinPubKeyHash,
                 0, 0, initialCommitmentHash, transitionBitmask, timeoutDelta);
         tokenTxBuilder.spendTo(pp1Locker, BigInteger.ONE);
 
         // Output 2: PP2
         tokenTxBuilder.spendTo(new PP2LockBuilder(
-                getOutpoint(witnessFundingTxId), merchantAddress.getHash(), 1,
-                merchantAddress.getHash()), BigInteger.ONE);
+                getOutpoint(witnessFundingTxId), operatorAddress.getHash(), 1,
+                operatorAddress.getHash()), BigInteger.ONE);
 
         // Output 3: PartialWitness
-        tokenTxBuilder.spendTo(new PartialWitnessLockBuilder(merchantAddress.getHash()), BigInteger.ONE);
+        tokenTxBuilder.spendTo(new PartialWitnessLockBuilder(operatorAddress.getHash()), BigInteger.ONE);
 
         // Output 4: Metadata OP_RETURN
         tokenTxBuilder.spendTo(new MetadataLockBuilder(metadataBytes), BigInteger.ZERO);
 
-        tokenTxBuilder.sendChangeTo(merchantAddress);
+        tokenTxBuilder.sendChangeTo(operatorAddress);
         return tokenTxBuilder.build(false);
     }
 
@@ -140,18 +140,18 @@ public class StateMachineTool {
      *
      * <p>Uses two-pass building with padding recalculation.
      *
-     * @param signerCallback      callback that signs sighash digests for the merchant key
-     * @param signerPubKey        public key corresponding to the merchant signer
+     * @param signerCallback      callback that signs sighash digests for the operator key
+     * @param signerPubKey        public key corresponding to the operator signer
      * @param fundingTx           funding transaction
      * @param tokenTx             the token transaction being witnessed
      * @param parentTokenTxBytes  raw bytes of the parent token transaction
-     * @param merchantPubkey      merchant's public key
+     * @param operatorPubkey      operator's public key
      * @param tokenChangePKH      20-byte HASH160 for witness change output
      * @param action              must be ENROLL, SETTLE, or TIMEOUT
      * @param eventData           operation-specific event data (may be null)
-     * @param custRewardAmount    customer reward amount (required for SETTLE, 0 otherwise)
-     * @param merchPayAmount      merchant payment amount (required for SETTLE, 0 otherwise)
-     * @param refundAmount        refund amount (required for TIMEOUT, 0 otherwise)
+     * @param counterpartyShareAmount    counterparty share amount (required for SETTLE, 0 otherwise)
+     * @param operatorShareAmount       operator share amount (required for SETTLE, 0 otherwise)
+     * @param recoveryAmount            recovery amount (required for TIMEOUT, 0 otherwise)
      * @param nLockTime           lock time for TIMEOUT (-1 or 0 if not applicable)
      * @param pp1OutputIndex      index of PP1 output in tokenTx (default 1)
      * @param pp2OutputIndex      index of PP2 output in tokenTx (default 2)
@@ -162,13 +162,13 @@ public class StateMachineTool {
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
-            PublicKey merchantPubkey,
+            PublicKey operatorPubkey,
             byte[] tokenChangePKH,
             StateMachineAction action,
             byte[] eventData,
-            long custRewardAmount,
-            long merchPayAmount,
-            long refundAmount,
+            long counterpartyShareAmount,
+            long operatorShareAmount,
+            long recoveryAmount,
             int nLockTime,
             int pp1OutputIndex,
             int pp2OutputIndex)
@@ -176,7 +176,7 @@ public class StateMachineTool {
 
         TransactionSigner signer = SignerAdapter.fromCallback(signerCallback, signerPubKey, sigHashAll);
 
-        ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
+        ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(operatorPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
         P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(signerPubKey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
@@ -208,10 +208,10 @@ public class StateMachineTool {
         long tokenChangeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         UnlockingScriptBuilder pp1Unlocker = buildPP1SmUnlocker(
-                action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
+                action, preImagePP1, pp2Output, operatorPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
-                custRewardAmount, merchPayAmount, refundAmount,
+                counterpartyShareAmount, operatorShareAmount, recoveryAmount,
                 null, null);
 
         TransactionBuilder witnessBuilder1 = new TransactionBuilder()
@@ -228,10 +228,10 @@ public class StateMachineTool {
         paddingBytes = tsl1.calculatePaddingBytes(witnessTx);
 
         pp1Unlocker = buildPP1SmUnlocker(
-                action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
+                action, preImagePP1, pp2Output, operatorPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
-                custRewardAmount, merchPayAmount, refundAmount,
+                counterpartyShareAmount, operatorShareAmount, recoveryAmount,
                 null, null);
 
         TransactionBuilder witnessBuilder2 = new TransactionBuilder()
@@ -252,43 +252,43 @@ public class StateMachineTool {
      *
      * <p>Two-pass: builds tx to compute sighash, signs with both keys, rebuilds.
      *
-     * @param merchantCallback    callback that signs sighash digests for the merchant key
-     * @param merchantPubKeyForSigning public key corresponding to the merchant signer
-     * @param customerPrivateKey  customer's private key for dual-signature
+     * @param operatorCallback    callback that signs sighash digests for the operator key
+     * @param operatorPubKeyForSigning public key corresponding to the operator signer
+     * @param counterpartyPrivateKey  counterparty's private key for dual-signature
      * @param fundingTx           funding transaction
      * @param tokenTx             the token transaction being witnessed
      * @param parentTokenTxBytes  raw bytes of the parent token transaction
-     * @param merchantPubkey      merchant's public key
-     * @param customerPubkey      customer's public key
+     * @param operatorPubkey      operator's public key
+     * @param counterpartyPubkey  counterparty's public key
      * @param tokenChangePKH      20-byte HASH160 for witness change output
      * @param action              must be CONFIRM or CONVERT
      * @param eventData           event data bytes for state machine transitions
      */
     public Transaction createDualWitnessTxn(
-            SigningCallback merchantCallback,
-            PublicKey merchantPubKeyForSigning,
-            PrivateKey customerPrivateKey,
+            SigningCallback operatorCallback,
+            PublicKey operatorPubKeyForSigning,
+            PrivateKey counterpartyPrivateKey,
             Transaction fundingTx,
             Transaction tokenTx,
             byte[] parentTokenTxBytes,
-            PublicKey merchantPubkey,
-            PublicKey customerPubkey,
+            PublicKey operatorPubkey,
+            PublicKey counterpartyPubkey,
             byte[] tokenChangePKH,
             StateMachineAction action,
             byte[] eventData)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
-        TransactionSigner merchantSigner = SignerAdapter.fromCallback(merchantCallback, merchantPubKeyForSigning, sigHashAll);
+        TransactionSigner operatorSigner = SignerAdapter.fromCallback(operatorCallback, operatorPubKeyForSigning, sigHashAll);
 
-        ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(merchantPubkey.getPubKeyHash());
+        ModP2PKHLockBuilder witnessLocker = new ModP2PKHLockBuilder(operatorPubkey.getPubKeyHash());
         PP2UnlockBuilder pp2Unlocker = PP2UnlockBuilder.forNormal(tokenTx.getTransactionIdBytes());
-        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(merchantPubKeyForSigning);
+        P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(operatorPubKeyForSigning);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // First pass: build tx to get sighash preimage
         TransactionBuilder preImageBuilder = new TransactionBuilder()
-                .spendFromTransaction(merchantSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(merchantSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
+                .spendFromTransaction(operatorSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(operatorSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE);
         preImageBuilder.setFee(BigInteger.valueOf(100));
@@ -297,10 +297,10 @@ public class StateMachineTool {
         Script subscript = tokenTx.getOutputs().get(1).getScript();
         byte[] preImagePP1 = new SigHash().getSighashPreimage(preImageTxn, sigHashAll, 1, subscript, BigInteger.ONE);
 
-        // Compute customer signature off-chain (same sighash preimage)
-        TransactionSignature customerSig = new TransactionSigner(sigHashAll, customerPrivateKey)
-                .signPreimage(customerPrivateKey, preImagePP1, sigHashAll);
-        byte[] customerSigBytes = customerSig.toTxFormat();
+        // Compute counterparty signature off-chain (same sighash preimage)
+        TransactionSignature counterpartySig = new TransactionSigner(sigHashAll, counterpartyPrivateKey)
+                .signPreimage(counterpartyPrivateKey, preImagePP1, sigHashAll);
+        byte[] counterpartySigBytes = counterpartySig.toTxFormat();
 
         TransactionUtils tsl1 = new TransactionUtils();
         byte[] tokenTxLHS = tsl1.getTxLHS(tokenTx);
@@ -309,15 +309,15 @@ public class StateMachineTool {
         long tokenChangeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         UnlockingScriptBuilder pp1Unlocker = buildPP1SmUnlocker(
-                action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
+                action, preImagePP1, pp2Output, operatorPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
-                customerPubkey, customerSigBytes);
+                counterpartyPubkey, counterpartySigBytes);
 
         Transaction witnessTx = new TransactionBuilder()
-                .spendFromTransaction(merchantSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(merchantSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(operatorSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(operatorSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -326,15 +326,15 @@ public class StateMachineTool {
         paddingBytes = tsl1.calculatePaddingBytes(witnessTx);
 
         pp1Unlocker = buildPP1SmUnlocker(
-                action, preImagePP1, pp2Output, merchantPubkey, tokenChangePKH,
+                action, preImagePP1, pp2Output, operatorPubkey, tokenChangePKH,
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
-                customerPubkey, customerSigBytes);
+                counterpartyPubkey, counterpartySigBytes);
 
         witnessTx = new TransactionBuilder()
-                .spendFromTransaction(merchantSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
-                .spendFromTransaction(merchantSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
+                .spendFromTransaction(operatorSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
+                .spendFromTransaction(operatorSigner, tokenTx, 1, TransactionInput.MAX_SEQ_NUMBER, pp1Unlocker)
                 .spendFromTransaction(tokenTx, 2, TransactionInput.MAX_SEQ_NUMBER, pp2Unlocker)
                 .spendTo(witnessLocker, BigInteger.ONE)
                 .build(false);
@@ -345,22 +345,22 @@ public class StateMachineTool {
     /**
      * Creates an enroll token transaction (INIT to ACTIVE).
      *
-     * <p>Merchant signs. 5-output structure: Change, PP1_SM, PP2, PP3, Metadata.
-     * ownerPKH updates to customerPKH (customer acts next).
+     * <p>Operator signs. 5-output structure: Change, PP1_SM, PP2, PP3, Metadata.
+     * ownerPKH updates to counterpartyPKH (counterparty acts next).
      *
      * @param prevWitnessTx       the previous witness transaction
      * @param prevTokenTx         the previous token transaction
-     * @param merchantPubkey      merchant's public key
+     * @param operatorPubkey      operator's public key
      * @param fundingTx           funding transaction
      * @param fundingSigner       callback that signs sighash digests for the funding key
      * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
      * @param eventData           enrollment event data
      * @param tokenId             the token identifier (32 bytes)
-     * @param merchantPKH         20-byte HASH160 of the merchant
-     * @param customerPKH         20-byte HASH160 of the customer
+     * @param operatorPKH         20-byte HASH160 of the operator
+     * @param counterpartyPKH     20-byte HASH160 of the counterparty
      * @param state               current state value from previous PP1_SM
-     * @param milestoneCount      current milestone count from previous PP1_SM
+     * @param checkpointCount     current checkpoint count from previous PP1_SM
      * @param commitmentHash      current commitment hash from previous PP1_SM (32 bytes)
      * @param transitionBitmask   transition bitmask from previous PP1_SM
      * @param timeoutDelta        timeout delta from previous PP1_SM
@@ -368,17 +368,17 @@ public class StateMachineTool {
     public Transaction createEnrollTxn(
             Transaction prevWitnessTx,
             Transaction prevTokenTx,
-            PublicKey merchantPubkey,
+            PublicKey operatorPubkey,
             Transaction fundingTx,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
             byte[] eventData,
             byte[] tokenId,
-            byte[] merchantPKH,
-            byte[] customerPKH,
+            byte[] operatorPKH,
+            byte[] counterpartyPKH,
             int state,
-            int milestoneCount,
+            int checkpointCount,
             byte[] commitmentHash,
             int transitionBitmask,
             int timeoutDelta)
@@ -386,10 +386,10 @@ public class StateMachineTool {
 
         TransactionSigner fundingTxSigner = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
 
-        Address merchantAddress = Address.fromKey(networkAddressType, merchantPubkey);
+        Address operatorAddress = Address.fromKey(networkAddressType, operatorPubkey);
 
-        // New ownerPKH = customerPKH (customer acts next)
-        Address customerAddress = LegacyAddress.fromPubKeyHash(networkAddressType, customerPKH);
+        // New ownerPKH = counterpartyPKH (counterparty acts next)
+        Address counterpartyAddress = LegacyAddress.fromPubKeyHash(networkAddressType, counterpartyPKH);
 
         // Compute new commitment hash:
         // eventDigest = SHA256(eventData)
@@ -406,19 +406,19 @@ public class StateMachineTool {
         System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
 
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                customerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
-                1, milestoneCount, newCommitHash,
+                counterpartyPKH, tokenId, operatorPKH, counterpartyPKH, rabinPubKeyHash,
+                1, checkpointCount, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
         PP2LockBuilder pp2Locker = new PP2LockBuilder(
-                getOutpoint(witnessFundingTxId), customerPKH, 1, customerPKH);
-        PartialWitnessLockBuilder shaLocker = new PartialWitnessLockBuilder(customerPKH);
+                getOutpoint(witnessFundingTxId), counterpartyPKH, 1, counterpartyPKH);
+        PartialWitnessLockBuilder shaLocker = new PartialWitnessLockBuilder(counterpartyPKH);
 
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
                 prevTokenTx.getOutputs().get(4).getScript());
 
         P2PKHUnlockBuilder fundingUnlocker = new P2PKHUnlockBuilder(fundingPubKey);
-        ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(merchantPubkey);
+        ModP2PKHUnlockBuilder prevWitnessUnlocker = new ModP2PKHUnlockBuilder(operatorPubkey);
         DefaultUnlockBuilder emptyUnlocker = new DefaultUnlockBuilder();
 
         // First build to compute PP3 spending sighash
@@ -430,7 +430,7 @@ public class StateMachineTool {
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
                 .spendTo(metadataLocker, BigInteger.ZERO)
-                .sendChangeTo(merchantAddress);
+                .sendChangeTo(operatorAddress);
         childPreImageBuilder.setFee(defaultFee);
         Transaction childPreImageTxn = childPreImageBuilder.build(false);
 
@@ -452,7 +452,7 @@ public class StateMachineTool {
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
                 .spendTo(metadataLocker, BigInteger.ZERO)
-                .sendChangeTo(merchantAddress);
+                .sendChangeTo(operatorAddress);
         childTxBuilder.setFee(defaultFee);
         return childTxBuilder.build(false);
     }
@@ -473,13 +473,13 @@ public class StateMachineTool {
      * @param witnessFundingTxId  txid for the next witness funding
      * @param newState            the post-transition state value
      * @param newOwnerPKH         20-byte PKH for the next expected actor
-     * @param incrementMilestone  if true, milestoneCount is incremented
+     * @param incrementCheckpoint  if true, checkpointCount is incremented
      * @param eventData           operation-specific data (null for timeout)
      * @param tokenId             the token identifier (32 bytes)
-     * @param merchantPKH         20-byte HASH160 of the merchant
-     * @param customerPKH         20-byte HASH160 of the customer
+     * @param operatorPKH         20-byte HASH160 of the operator
+     * @param counterpartyPKH     20-byte HASH160 of the counterparty
      * @param state               current state value from previous PP1_SM (unused but kept for context)
-     * @param milestoneCount      current milestone count from previous PP1_SM
+     * @param checkpointCount     current checkpoint count from previous PP1_SM
      * @param commitmentHash      current commitment hash from previous PP1_SM (32 bytes)
      * @param transitionBitmask   transition bitmask from previous PP1_SM
      * @param timeoutDelta        timeout delta from previous PP1_SM
@@ -494,13 +494,13 @@ public class StateMachineTool {
             byte[] witnessFundingTxId,
             int newState,
             byte[] newOwnerPKH,
-            boolean incrementMilestone,
+            boolean incrementCheckpoint,
             byte[] eventData,
             byte[] tokenId,
-            byte[] merchantPKH,
-            byte[] customerPKH,
+            byte[] operatorPKH,
+            byte[] counterpartyPKH,
             int state,
-            int milestoneCount,
+            int checkpointCount,
             byte[] commitmentHash,
             int transitionBitmask,
             int timeoutDelta)
@@ -523,7 +523,7 @@ public class StateMachineTool {
             newCommitHash = commitmentHash.clone();
         }
 
-        int newMC = incrementMilestone ? milestoneCount + 1 : milestoneCount;
+        int newMC = incrementCheckpoint ? checkpointCount + 1 : checkpointCount;
 
         // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
         byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
@@ -531,7 +531,7 @@ public class StateMachineTool {
         System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
 
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
+                newOwnerPKH, tokenId, operatorPKH, counterpartyPKH, rabinPubKeyHash,
                 newState, newMC, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
@@ -585,11 +585,11 @@ public class StateMachineTool {
     /**
      * Creates a settle token transaction (CONVERTING to SETTLED, 7-output topology).
      *
-     * <p>7-output structure: Change(0), CustomerReward(1), MerchantPayment(2),
+     * <p>7-output structure: Change(0), CounterpartyShare(1), OperatorShare(2),
      * PP1_SM(3), PP2(4), PP3(5), Metadata(6).
      *
-     * <p>Customer reward and merchant payment are P2PKH outputs using the immutable
-     * customerPKH and merchantPKH from the PP1_SM header.
+     * <p>Counterparty share and operator share are P2PKH outputs using the immutable
+     * counterpartyPKH and operatorPKH from the PP1_SM header.
      *
      * @param prevWitnessTx       the previous witness transaction
      * @param prevTokenTx         the previous token transaction
@@ -598,14 +598,14 @@ public class StateMachineTool {
      * @param fundingSigner       callback that signs sighash digests for the funding key
      * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
-     * @param custRewardAmount    satoshi amount rewarded to the customer
-     * @param merchPayAmount      satoshi amount paid to the merchant
+     * @param counterpartyShareAmount    satoshi amount distributed to the counterparty
+     * @param operatorShareAmount       satoshi amount distributed to the operator
      * @param eventData           optional event data (may be null)
      * @param tokenId             the token identifier (32 bytes)
-     * @param merchantPKH         20-byte HASH160 of the merchant
-     * @param customerPKH         20-byte HASH160 of the customer
+     * @param operatorPKH         20-byte HASH160 of the operator
+     * @param counterpartyPKH     20-byte HASH160 of the counterparty
      * @param state               current state value from previous PP1_SM
-     * @param milestoneCount      current milestone count from previous PP1_SM
+     * @param checkpointCount     current checkpoint count from previous PP1_SM
      * @param commitmentHash      current commitment hash from previous PP1_SM (32 bytes)
      * @param transitionBitmask   transition bitmask from previous PP1_SM
      * @param timeoutDelta        timeout delta from previous PP1_SM
@@ -618,14 +618,14 @@ public class StateMachineTool {
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
-            BigInteger custRewardAmount,
-            BigInteger merchPayAmount,
+            BigInteger counterpartyShareAmount,
+            BigInteger operatorShareAmount,
             byte[] eventData,
             byte[] tokenId,
-            byte[] merchantPKH,
-            byte[] customerPKH,
+            byte[] operatorPKH,
+            byte[] counterpartyPKH,
             int state,
-            int milestoneCount,
+            int checkpointCount,
             byte[] commitmentHash,
             int transitionBitmask,
             int timeoutDelta)
@@ -635,8 +635,8 @@ public class StateMachineTool {
 
         Address signerAddress = Address.fromKey(networkAddressType, signerPubkey);
 
-        // Merchant owns settled token (terminal state)
-        byte[] newOwnerPKH = merchantPKH;
+        // Operator owns settled token (terminal state)
+        byte[] newOwnerPKH = operatorPKH;
         Address newOwnerAddress = LegacyAddress.fromPubKeyHash(networkAddressType, newOwnerPKH);
 
         // Compute new commitment hash
@@ -651,11 +651,11 @@ public class StateMachineTool {
             newCommitHash = commitmentHash.clone();
         }
 
-        // P2PKH outputs for customer reward and merchant payment
-        Address custRewardAddress = LegacyAddress.fromPubKeyHash(networkAddressType, customerPKH);
-        Address merchPayAddress = LegacyAddress.fromPubKeyHash(networkAddressType, merchantPKH);
-        P2PKHLockBuilder custRewardLocker = new P2PKHLockBuilder(custRewardAddress);
-        P2PKHLockBuilder merchPayLocker = new P2PKHLockBuilder(merchPayAddress);
+        // P2PKH outputs for counterparty share and operator share
+        Address counterpartyShareAddress = LegacyAddress.fromPubKeyHash(networkAddressType, counterpartyPKH);
+        Address operatorShareAddress = LegacyAddress.fromPubKeyHash(networkAddressType, operatorPKH);
+        P2PKHLockBuilder counterpartyShareLocker = new P2PKHLockBuilder(counterpartyShareAddress);
+        P2PKHLockBuilder operatorShareLocker = new P2PKHLockBuilder(operatorShareAddress);
 
         // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
         byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
@@ -663,8 +663,8 @@ public class StateMachineTool {
         System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
 
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
-                4, milestoneCount, newCommitHash,
+                newOwnerPKH, tokenId, operatorPKH, counterpartyPKH, rabinPubKeyHash,
+                4, checkpointCount, newCommitHash,
                 transitionBitmask, timeoutDelta);
 
         PP2LockBuilder pp2Locker = new PP2LockBuilder(
@@ -683,8 +683,8 @@ public class StateMachineTool {
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, emptyUnlocker)
-                .spendTo(custRewardLocker, custRewardAmount)
-                .spendTo(merchPayLocker, merchPayAmount)
+                .spendTo(counterpartyShareLocker, counterpartyShareAmount)
+                .spendTo(operatorShareLocker, operatorShareAmount)
                 .spendTo(pp1Locker, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -707,8 +707,8 @@ public class StateMachineTool {
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, TransactionInput.MAX_SEQ_NUMBER, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, TransactionInput.MAX_SEQ_NUMBER, sha256Unlocker)
-                .spendTo(custRewardLocker, custRewardAmount)
-                .spendTo(merchPayLocker, merchPayAmount)
+                .spendTo(counterpartyShareLocker, counterpartyShareAmount)
+                .spendTo(operatorShareLocker, operatorShareAmount)
                 .spendTo(pp1Locker, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -721,9 +721,9 @@ public class StateMachineTool {
     /**
      * Creates a timeout token transaction (any non-terminal to EXPIRED, 6-output topology).
      *
-     * <p>6-output structure: Change(0), MerchantRefund(1), PP1_SM(2), PP2(3), PP3(4), Metadata(5).
+     * <p>6-output structure: Change(0), OperatorRecovery(1), PP1_SM(2), PP2(3), PP3(4), Metadata(5).
      *
-     * <p>Merchant refund is a P2PKH output using the immutable merchantPKH from the header.
+     * <p>Operator recovery is a P2PKH output using the immutable operatorPKH from the header.
      * nLockTime is set to enforce the timeout window.
      *
      * @param prevWitnessTx       the previous witness transaction
@@ -733,13 +733,13 @@ public class StateMachineTool {
      * @param fundingSigner       callback that signs sighash digests for the funding key
      * @param fundingPubKey       public key corresponding to the funding signer
      * @param witnessFundingTxId  txid for the next witness funding
-     * @param refundAmount        satoshi amount to refund to the merchant
+     * @param recoveryAmount        satoshi amount to recover to the operator
      * @param nLockTime           block height for nLockTime enforcement
      * @param tokenId             the token identifier (32 bytes)
-     * @param merchantPKH         20-byte HASH160 of the merchant
-     * @param customerPKH         20-byte HASH160 of the customer
+     * @param operatorPKH         20-byte HASH160 of the operator
+     * @param counterpartyPKH     20-byte HASH160 of the counterparty
      * @param state               current state value from previous PP1_SM
-     * @param milestoneCount      current milestone count from previous PP1_SM
+     * @param checkpointCount     current checkpoint count from previous PP1_SM
      * @param commitmentHash      current commitment hash from previous PP1_SM (32 bytes)
      * @param transitionBitmask   transition bitmask from previous PP1_SM
      * @param timeoutDelta        timeout delta from previous PP1_SM
@@ -752,13 +752,13 @@ public class StateMachineTool {
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             byte[] witnessFundingTxId,
-            BigInteger refundAmount,
+            BigInteger recoveryAmount,
             int nLockTime,
             byte[] tokenId,
-            byte[] merchantPKH,
-            byte[] customerPKH,
+            byte[] operatorPKH,
+            byte[] counterpartyPKH,
             int state,
-            int milestoneCount,
+            int checkpointCount,
             byte[] commitmentHash,
             int transitionBitmask,
             int timeoutDelta)
@@ -768,16 +768,16 @@ public class StateMachineTool {
 
         Address signerAddress = Address.fromKey(networkAddressType, signerPubkey);
 
-        // Merchant owns expired token (terminal state)
-        byte[] newOwnerPKH = merchantPKH;
+        // Operator owns expired token (terminal state)
+        byte[] newOwnerPKH = operatorPKH;
         Address newOwnerAddress = LegacyAddress.fromPubKeyHash(networkAddressType, newOwnerPKH);
 
         // Timeout preserves parent's commitment hash (no update)
         byte[] parentCommitHash = commitmentHash.clone();
 
-        // Merchant refund P2PKH output
-        Address merchRefundAddress = LegacyAddress.fromPubKeyHash(networkAddressType, merchantPKH);
-        P2PKHLockBuilder merchRefundLocker = new P2PKHLockBuilder(merchRefundAddress);
+        // Operator recovery P2PKH output
+        Address operatorRecoveryAddress = LegacyAddress.fromPubKeyHash(networkAddressType, operatorPKH);
+        P2PKHLockBuilder operatorRecoveryLocker = new P2PKHLockBuilder(operatorRecoveryAddress);
 
         // Extract rabinPubKeyHash from parent PP1_SM script at byte offset [97:117]
         byte[] parentPP1Bytes = prevTokenTx.getOutputs().get(1).getScript().getProgram();
@@ -785,8 +785,8 @@ public class StateMachineTool {
         System.arraycopy(parentPP1Bytes, 97, rabinPubKeyHash, 0, 20);
 
         PP1SmLockBuilder pp1Locker = new PP1SmLockBuilder(
-                newOwnerPKH, tokenId, merchantPKH, customerPKH, rabinPubKeyHash,
-                5, milestoneCount, parentCommitHash,
+                newOwnerPKH, tokenId, operatorPKH, counterpartyPKH, rabinPubKeyHash,
+                5, checkpointCount, parentCommitHash,
                 transitionBitmask, timeoutDelta);
 
         PP2LockBuilder pp2Locker = new PP2LockBuilder(
@@ -808,7 +808,7 @@ public class StateMachineTool {
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, lockTimeSeq, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, lockTimeSeq, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, lockTimeSeq, emptyUnlocker)
-                .spendTo(merchRefundLocker, refundAmount)
+                .spendTo(operatorRecoveryLocker, recoveryAmount)
                 .spendTo(pp1Locker, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -832,7 +832,7 @@ public class StateMachineTool {
                 .spendFromTransaction(fundingTxSigner, fundingTx, 1, lockTimeSeq, fundingUnlocker)
                 .spendFromTransaction(fundingTxSigner, prevWitnessTx, 0, lockTimeSeq, prevWitnessUnlocker)
                 .spendFromTransaction(prevTokenTx, 3, lockTimeSeq, sha256Unlocker)
-                .spendTo(merchRefundLocker, refundAmount)
+                .spendTo(operatorRecoveryLocker, recoveryAmount)
                 .spendTo(pp1Locker, BigInteger.ONE)
                 .spendTo(pp2Locker, BigInteger.ONE)
                 .spendTo(shaLocker, BigInteger.ONE)
@@ -890,11 +890,11 @@ public class StateMachineTool {
 
     private UnlockingScriptBuilder buildPP1SmUnlocker(
             StateMachineAction action, byte[] preImage, byte[] pp2Output,
-            PublicKey merchantPubkey, byte[] changePKH, long changeAmount,
+            PublicKey operatorPubkey, byte[] changePKH, long changeAmount,
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
             byte[] fundingOutpoint, byte[] eventData,
-            long custRewardAmount, long merchPayAmount, long refundAmount,
-            PublicKey customerPubKey, byte[] customerSigBytes) {
+            long counterpartyShareAmount, long operatorShareAmount, long recoveryAmount,
+            PublicKey counterpartyPubKey, byte[] counterpartySigBytes) {
 
         switch (action) {
             case CREATE:
@@ -903,34 +903,34 @@ public class StateMachineTool {
                         new byte[0], new byte[0], 0, new byte[0], new byte[0]);
             case ENROLL:
                 return PP1SmUnlockBuilder.forEnroll(
-                        preImage, pp2Output, merchantPubkey,
+                        preImage, pp2Output, operatorPubkey,
                         changePKH, changeAmount, eventData,
                         tokenLHS, prevTokenTx, paddingBytes);
             case CONFIRM:
                 return PP1SmUnlockBuilder.forConfirm(
-                        preImage, pp2Output, merchantPubkey,
+                        preImage, pp2Output, operatorPubkey,
                         changePKH, changeAmount,
-                        customerPubKey, customerSigBytes, eventData,
+                        counterpartyPubKey, counterpartySigBytes, eventData,
                         tokenLHS, prevTokenTx, paddingBytes);
             case CONVERT:
                 return PP1SmUnlockBuilder.forConvert(
-                        preImage, pp2Output, merchantPubkey,
+                        preImage, pp2Output, operatorPubkey,
                         changePKH, changeAmount,
-                        customerPubKey, customerSigBytes, eventData,
+                        counterpartyPubKey, counterpartySigBytes, eventData,
                         tokenLHS, prevTokenTx, paddingBytes);
             case SETTLE:
                 return PP1SmUnlockBuilder.forSettle(
-                        preImage, pp2Output, merchantPubkey,
+                        preImage, pp2Output, operatorPubkey,
                         changePKH, changeAmount,
-                        custRewardAmount, merchPayAmount, eventData,
+                        counterpartyShareAmount, operatorShareAmount, eventData,
                         tokenLHS, prevTokenTx, paddingBytes);
             case TIMEOUT:
                 return PP1SmUnlockBuilder.forTimeout(
-                        preImage, pp2Output, merchantPubkey,
-                        changePKH, changeAmount, refundAmount,
+                        preImage, pp2Output, operatorPubkey,
+                        changePKH, changeAmount, recoveryAmount,
                         tokenLHS, prevTokenTx, paddingBytes);
             default:
-                return PP1SmUnlockBuilder.forBurn(merchantPubkey);
+                return PP1SmUnlockBuilder.forBurn(operatorPubkey);
         }
     }
 

@@ -17,7 +17,7 @@ package org.twostack.tstokenlib4j.transaction;
  * SigningCallback signer = sighash -> privateKey.sign(sighash);
  *
  * // With a KMS:
- * SigningCallback signer = sighash -> kms.sign(merchantId, sighash);
+ * SigningCallback signer = sighash -> kms.sign(keyId, sighash);
  *
  * // With libspiffy4j's CallbackTransactionSigner:
  * CallbackTransactionSigner spiffySigner = ...;
