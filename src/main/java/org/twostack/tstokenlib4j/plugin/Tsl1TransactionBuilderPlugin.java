@@ -1,6 +1,7 @@
 package org.twostack.tstokenlib4j.plugin;
 
 import org.twostack.bitcoin4j.Address;
+import org.twostack.bitcoin4j.address.LegacyAddress;
 import org.twostack.bitcoin4j.PublicKey;
 import org.twostack.bitcoin4j.Utils;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
@@ -255,7 +256,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 : request.fundingUtxos();
         PluginTransactionRequest witnessRequest = new PluginTransactionRequest(
                 witnessFundingUtxos, request.signer(), request.transactionLookup(),
-                request.publicKeyHexes(), request.changeAddress(), witnessParams);
+                request.publicKeyHexes(), witnessParams);
 
         Transaction witnessTx = dispatchBuild("at.witness", witnessParams, witnessRequest, signer, pubKey);
         String witnessTxid = witnessTx.getTransactionId();
@@ -279,7 +280,11 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         Transaction fundingTx = lookupTransaction(
                 request.transactionLookup() != null ? request.transactionLookup() : txid -> null,
                 params, "fundingTxId", request);
-        Address changeAddress = requireAddress(params, "changeAddress", networkAddressType);
+        // Change address defaults to the coordinator's pubkey address when not
+        // explicitly provided in params — the coordinator owns the provisioned UTXOs.
+        Address changeAddress = params.containsKey("changeAddress")
+                ? requireAddress(params, "changeAddress", networkAddressType)
+                : LegacyAddress.fromKey(networkAddressType, pubKey);
         int lifecycleSteps = optionalInt(params, "lifecycleSteps", 1);
         long feeRateSatsPerKb = optionalLong(params, "feeRateSatsPerKb", 100);
 
@@ -473,9 +478,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                     witnessFundingOutpoint = atTool.getOutpoint(witnessFundingTxId);
                 }
                 byte[] witnessChangePKH = pubKey.getPubKeyHash();
+                // Issuance defaults to the issuer's own address when no explicit
+                // recipient is provided — distribution happens via at.transfer.
+                Address recipientAddr = params.containsKey("recipientAddress")
+                        ? requireAddress(params, "recipientAddress", networkAddressType)
+                        : LegacyAddress.fromKey(networkAddressType, pubKey);
                 yield atTool.createTokenIssuanceTxn(
                         fundingTx, fundingVout, signer, pubKey,
-                        requireAddress(params, "recipientAddress", networkAddressType),
+                        recipientAddr,
                         witnessFundingOutpoint,
                         witnessChangePKH,
                         issuerPKH,
