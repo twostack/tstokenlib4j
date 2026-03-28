@@ -451,26 +451,24 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 int fundingVout = resolveFundingVout(params, request);
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 byte[] issuerPKH = pubKey.getPubKeyHash();
-                // The witness funding txid must be committed in PP2 at issuance time.
-                // Pick the next available UTXO from the coordinator's funding list
-                // (index 0 is used for this issuance, index 1 is earmarked for the witness).
-                // BitcoinUtxo.txid() is display-order hex; createTokenIssuanceTxn
-                // expects wire-order bytes, so reverse after decoding.
-                byte[] witnessFundingTxId;
+                AppendableTokenTool atTool = new AppendableTokenTool(networkAddressType);
+                // PP2 embeds the full 36-byte outpoint that will fund the witness TX.
+                // Use fundingUtxos[1]'s txid (wire order) + actual vout.
+                byte[] witnessFundingOutpoint;
                 if (request.fundingUtxos().size() > 1) {
-                    witnessFundingTxId = Utils.reverseBytes(
-                            Utils.HEX.decode(request.fundingUtxos().get(1).txid()));
+                    var witnessUtxo = request.fundingUtxos().get(1);
+                    byte[] witnessTxId = Utils.reverseBytes(Utils.HEX.decode(witnessUtxo.txid()));
+                    witnessFundingOutpoint = atTool.getOutpoint(witnessTxId, witnessUtxo.vout());
                 } else {
-                    witnessFundingTxId = optionalHexBytes(params, "witnessFundingTxId");
+                    byte[] witnessFundingTxId = optionalHexBytes(params, "witnessFundingTxId");
                     if (witnessFundingTxId == null) witnessFundingTxId = new byte[32];
+                    witnessFundingOutpoint = atTool.getOutpoint(witnessFundingTxId);
                 }
-                // PP2's witnessChangePKH must match the witness TX output, which is
-                // locked to the coordinator's signer key.
                 byte[] witnessChangePKH = pubKey.getPubKeyHash();
-                yield new AppendableTokenTool(networkAddressType).createTokenIssuanceTxn(
+                yield atTool.createTokenIssuanceTxn(
                         fundingTx, fundingVout, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        witnessFundingTxId,
+                        witnessFundingOutpoint,
                         witnessChangePKH,
                         issuerPKH,
                         requireHexBytes(params, "rabinPKH"),
@@ -503,20 +501,22 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 byte[] parentPP1 = prevTokenTx.getOutputs().get(1).getScript().getProgram();
                 byte[] ownerPKH = new byte[20];
                 System.arraycopy(parentPP1, 1, ownerPKH, 0, 20);
-                // PP2 commits to the witness funding outpoint. The next available UTXO
-                // (index 1) will fund the stamp witness TX.
-                byte[] stampWitnessFundingTxId;
+                // PP2 commits to the full 36-byte witness funding outpoint.
+                AppendableTokenTool stampAtTool = new AppendableTokenTool(networkAddressType);
+                byte[] stampWitnessFundingOutpoint;
                 if (request.fundingUtxos().size() > 1) {
-                    stampWitnessFundingTxId = Utils.reverseBytes(
-                            Utils.HEX.decode(request.fundingUtxos().get(1).txid()));
+                    var witnessUtxo = request.fundingUtxos().get(1);
+                    byte[] witnessTxId = Utils.reverseBytes(Utils.HEX.decode(witnessUtxo.txid()));
+                    stampWitnessFundingOutpoint = stampAtTool.getOutpoint(witnessTxId, witnessUtxo.vout());
                 } else {
-                    stampWitnessFundingTxId = optionalHexBytes(params, "issuerWitnessFundingTxId");
+                    byte[] stampWitnessFundingTxId = optionalHexBytes(params, "issuerWitnessFundingTxId");
                     if (stampWitnessFundingTxId == null) stampWitnessFundingTxId = new byte[32];
+                    stampWitnessFundingOutpoint = stampAtTool.getOutpoint(stampWitnessFundingTxId);
                 }
-                yield new AppendableTokenTool(networkAddressType).createTokenStampTxn(
+                yield stampAtTool.createTokenStampTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, fundingVout, signer, pubKey,
-                        stampWitnessFundingTxId,
+                        stampWitnessFundingOutpoint,
                         requireHexBytes(params, "stampMetadata"),
                         ownerPKH,
                         requireHexBytes(params, "tokenId"),

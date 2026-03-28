@@ -218,17 +218,21 @@ public class AppendableTokenTool {
             byte[] metadataBytes)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
         return createTokenIssuanceTxn(tokenFundingTx, 1, fundingSigner, fundingPubKey,
-                recipientAddress, witnessFundingTxId, witnessChangePKH, issuerPKH,
+                recipientAddress, getOutpoint(witnessFundingTxId), witnessChangePKH, issuerPKH,
                 rabinPubKeyHash, threshold, metadataBytes);
     }
 
+    /**
+     * @param witnessFundingOutpoint 36-byte outpoint (txid + vout LE) that will fund the witness TX.
+     *                                Embedded in PP2 so the witness TX can prove it spends the committed UTXO.
+     */
     public Transaction createTokenIssuanceTxn(
             Transaction tokenFundingTx,
             int fundingVout,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
             Address recipientAddress,
-            byte[] witnessFundingTxId,
+            byte[] witnessFundingOutpoint,
             byte[] witnessChangePKH,
             byte[] issuerPKH,
             byte[] rabinPubKeyHash,
@@ -255,7 +259,7 @@ public class AppendableTokenTool {
                 rabinPubKeyHash, 0, threshold, initialStampsHash), BigInteger.ONE);
 
         // Output 2: PP2 — witnessChangePKH must match the witness TX output (signer's key)
-        tokenTxBuilder.spendTo(new PP2LockBuilder(getOutpoint(witnessFundingTxId),
+        tokenTxBuilder.spendTo(new PP2LockBuilder(witnessFundingOutpoint,
                 witnessChangePKH, 1, recipientPKH), BigInteger.ONE);
 
         // Output 3: PartialWitness
@@ -427,10 +431,13 @@ public class AppendableTokenTool {
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
         return createTokenStampTxn(prevWitnessTx, prevTokenTx, issuerPubkey,
                 fundingTx, 1, fundingSigner, fundingPubKey,
-                issuerWitnessFundingTxId, stampMetadata, ownerPKH, tokenId, issuerPKH,
+                getOutpoint(issuerWitnessFundingTxId), stampMetadata, ownerPKH, tokenId, issuerPKH,
                 parentStampCount, threshold, parentStampsHash);
     }
 
+    /**
+     * @param issuerWitnessFundingOutpoint 36-byte outpoint (txid + vout LE) that will fund the stamp witness TX.
+     */
     public Transaction createTokenStampTxn(
             Transaction prevWitnessTx,
             Transaction prevTokenTx,
@@ -439,7 +446,7 @@ public class AppendableTokenTool {
             int fundingVout,
             SigningCallback fundingSigner,
             PublicKey fundingPubKey,
-            byte[] issuerWitnessFundingTxId,
+            byte[] issuerWitnessFundingOutpoint,
             byte[] stampMetadata,
             byte[] ownerPKH,
             byte[] tokenId,
@@ -473,7 +480,7 @@ public class AppendableTokenTool {
 
         // PP2 witnessChangePKH must match the witness TX output (issuer signs the witness).
         // ownerPKH is the token holder; issuerPKH is the stamp signer.
-        PP2LockBuilder pp2Locker = new PP2LockBuilder(getOutpoint(issuerWitnessFundingTxId),
+        PP2LockBuilder pp2Locker = new PP2LockBuilder(issuerWitnessFundingOutpoint,
                 issuerPKH, 1, ownerPKH);
         PartialWitnessLockBuilder shaLocker = new PartialWitnessLockBuilder(ownerPKH);
 

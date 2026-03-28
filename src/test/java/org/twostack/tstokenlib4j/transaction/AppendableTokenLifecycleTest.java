@@ -14,9 +14,12 @@ import org.twostack.tstokenlib4j.crypto.RabinSignature;
 import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.AppendableTokenAction;
 
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.util.EnumSet;
+import java.util.LinkedList;
 
 import static org.junit.Assert.*;
 
@@ -134,9 +137,91 @@ public class AppendableTokenLifecycleTest {
         Script scriptPubKey = parentTx.getOutputs().get(parentVout).getScript();
         long sats = parentTx.getOutputs().get(parentVout).getAmount().longValue();
 
-        new Interpreter().correctlySpends(
-                scriptSig, scriptPubKey, spendingTx, inputIndex,
-                VERIFY_FLAGS, Coin.valueOf(sats));
+        try {
+            new Interpreter().correctlySpends(
+                    scriptSig, scriptPubKey, spendingTx, inputIndex,
+                    VERIFY_FLAGS, Coin.valueOf(sats));
+        } catch (Exception e) {
+            // On failure, re-run with tracing and dump to file
+            String traceFile = "/tmp/pp2_trace_input" + inputIndex + ".txt";
+            System.err.println("Input[" + inputIndex + "] spending parent vout=" + parentVout + " FAILED: " + e.getMessage());
+            System.err.println("Tracing to " + traceFile);
+            try (PrintWriter pw = new PrintWriter(new FileWriter(traceFile))) {
+                pw.println("=== Script trace for input[" + inputIndex + "] spending parent vout=" + parentVout + " ===");
+                pw.println("scriptSig len=" + scriptSig.getProgram().length);
+                pw.println("scriptPubKey len=" + scriptPubKey.getProgram().length);
+                pw.println("value=" + sats + " sats");
+                pw.println("spending TX id=" + spendingTx.getTransactionId());
+                pw.println("parent TX id=" + parentTx.getTransactionId());
+                pw.println();
+
+                LinkedList<byte[]> stack = new LinkedList<>();
+                // Execute scriptSig first
+                pw.println("=== SCRIPTSIG EXECUTION ===");
+                Interpreter.executeScript(spendingTx, inputIndex, scriptSig, stack,
+                        Coin.valueOf(sats), VERIFY_FLAGS, null,
+                        (pc, opcode, opName, s, alt) -> {
+                            pw.printf("  pc=%d op=%s stack=%d alt=%d%n", pc, opName, s.size(), alt.size());
+                            // Print top 3 stack items
+                            int show = Math.min(3, s.size());
+                            for (int j = 0; j < show; j++) {
+                                byte[] item = s.get(s.size() - 1 - j);
+                                pw.printf("    stack[%d] (%d bytes): %s%n", j, item.length,
+                                        item.length <= 80 ? Utils.HEX.encode(item) : Utils.HEX.encode(item).substring(0, 80) + "...");
+                            }
+                        });
+
+                pw.println("\n=== SCRIPTPUBKEY EXECUTION ===");
+                pw.println("Stack has " + stack.size() + " items before scriptPubKey");
+                for (int j = 0; j < Math.min(5, stack.size()); j++) {
+                    byte[] item = stack.get(stack.size() - 1 - j);
+                    pw.printf("  pre-stack[%d] (%d bytes): %s%n", j, item.length,
+                            item.length <= 80 ? Utils.HEX.encode(item) : Utils.HEX.encode(item).substring(0, 80) + "...");
+                }
+
+                // Track last N ops for the failure point
+                final int[] opCounter = {0};
+                final String[] lastOps = new String[50];
+                final int[] lastIdx = {0};
+                try {
+                    Interpreter.executeScript(spendingTx, inputIndex, scriptPubKey, stack,
+                            Coin.valueOf(sats), VERIFY_FLAGS, null,
+                            (pc, opcode, opName, s, alt) -> {
+                                opCounter[0]++;
+                                String line = String.format("  op#%d pc=%d %s stack=%d alt=%d",
+                                        opCounter[0], pc, opName, s.size(), alt.size());
+                                // Log ALL ops from op#820 onward (near CODESEP/CHECKSIG)
+                                if (opCounter[0] >= 820) {
+                                    pw.println(line);
+                                    int show = Math.min(5, s.size());
+                                    for (int j = 0; j < show; j++) {
+                                        byte[] item = s.get(s.size() - 1 - j);
+                                        pw.printf("      stack[%d] (%d bytes): %s%n", j, item.length,
+                                                item.length <= 80 ? Utils.HEX.encode(item) : Utils.HEX.encode(item).substring(0, 80) + "...");
+                                    }
+                                }
+                                // Also log key ops earlier
+                                if (opCounter[0] < 820 && (opName.contains("CHECKSIG") || opName.contains("EQUALVERIFY")
+                                        || opName.contains("CODESEP") || opName.contains("CAT"))) {
+                                    pw.println(line);
+                                }
+                            });
+                    pw.println("\nScript completed — final stack is non-true");
+                } catch (Exception inner) {
+                    pw.println("\nScript FAILED at op#" + opCounter[0] + ": " + inner.getMessage());
+                }
+                pw.println("\nFinal stack size: " + stack.size());
+                for (int j = 0; j < Math.min(5, stack.size()); j++) {
+                    byte[] item = stack.get(stack.size() - 1 - j);
+                    pw.printf("  final-stack[%d] (%d bytes): %s%n", j, item.length,
+                            item.length <= 80 ? Utils.HEX.encode(item) : Utils.HEX.encode(item).substring(0, 80) + "...");
+                }
+            } catch (Exception traceEx) {
+                System.err.println("Trace failed: " + traceEx.getMessage());
+                traceEx.printStackTrace();
+            }
+            throw e; // re-throw original
+        }
     }
 
     /**
@@ -153,12 +238,14 @@ public class AppendableTokenLifecycleTest {
         byte[] initialStampsHash = new byte[32]; // matches createTokenIssuanceTxn's initial value
 
         // ── Step 1: Issue ──
+        // PP2 must commit to the funding outpoint that the witness TX will actually use.
+        // The witness is funded by fundingTx2, so we embed fundingTx2's txid.
         Transaction issuanceTx = atTool.createTokenIssuanceTxn(
                 fundingTx,
                 issuerSigner(),
                 issuerPub,
                 issuerAddress,
-                tokenId,
+                fundingTx2.getTransactionIdBytes(),
                 issuerPKH,
                 issuerPKH,
                 rabinPubKeyHash,
@@ -189,6 +276,9 @@ public class AppendableTokenLifecycleTest {
         // Verify witness PP1 spend (input 1 spends issuanceTx output 1)
         verifySpend(issuanceWitness, 1, issuanceTx, 1);
 
+        // Verify witness PP2 spend (input 2 spends issuanceTx output 2)
+        verifySpend(issuanceWitness, 2, issuanceTx, 2);
+
         // ── Step 3: Stamp #1 ──
         byte[] stamp1Metadata = "stamp-visit-1".getBytes();
 
@@ -199,7 +289,7 @@ public class AppendableTokenLifecycleTest {
                 fundingTx2,
                 issuerSigner(),
                 issuerPub,
-                new byte[32], // issuerWitnessFundingTxId
+                fundingTx2.getTransactionIdBytes(), // witness funded by fundingTx2
                 stamp1Metadata,
                 issuerPKH,
                 tokenId,
@@ -232,6 +322,9 @@ public class AppendableTokenLifecycleTest {
         // Verify witness PP1 spend (input 1 spends stamp1Tx output 1)
         verifySpend(stamp1Witness, 1, stamp1Tx, 1);
 
+        // Verify witness PP2 spend (input 2 spends stamp1Tx output 2)
+        verifySpend(stamp1Witness, 2, stamp1Tx, 2);
+
         // ── Step 5: Stamp #2 ──
         byte[] stamp2Metadata = "stamp-visit-2".getBytes();
 
@@ -242,7 +335,7 @@ public class AppendableTokenLifecycleTest {
                 fundingTx2,
                 issuerSigner(),
                 issuerPub,
-                new byte[32],
+                fundingTx2.getTransactionIdBytes(), // witness funded by fundingTx2
                 stamp2Metadata,
                 issuerPKH,
                 tokenId,
@@ -272,5 +365,8 @@ public class AppendableTokenLifecycleTest {
 
         // Verify witness PP1 spend (input 1 spends stamp2Tx output 1)
         verifySpend(stamp2Witness, 1, stamp2Tx, 1);
+
+        // Verify witness PP2 spend (input 2 spends stamp2Tx output 2)
+        verifySpend(stamp2Witness, 2, stamp2Tx, 2);
     }
 }

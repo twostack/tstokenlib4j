@@ -89,7 +89,7 @@ public class StampVoutReproductionTest {
                 witnessTx, issuanceTx, signerPub,
                 fundingTx, 1,  // ← HARDCODED vout=1 (the bug)
                 signer, signerPub,
-                new byte[32], "test-stamp".getBytes(),
+                new byte[36], "test-stamp".getBytes(),
                 ownerPKH, tokenId, signerPub.getPubKeyHash(),
                 0, 10, new byte[32]);
 
@@ -130,7 +130,7 @@ public class StampVoutReproductionTest {
                 witnessTx, issuanceTx, signerPub,
                 fundingTx, 0,  // ← CORRECT vout=0 (the fix)
                 signer, signerPub,
-                new byte[32], "test-stamp".getBytes(),
+                new byte[36], "test-stamp".getBytes(),
                 ownerPKH, tokenId, signerPub.getPubKeyHash(),
                 0, 10, new byte[32]);
 
