@@ -169,8 +169,16 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                     "Unsupported action '" + action + "'. Supported: " + SUPPORTED_ACTIONS);
         }
 
-        // Adapt CallbackTransactionSigner → SigningCallback
-        SigningCallback signingCallback = sighash -> request.signer().sign(sighash, 0);
+        // Adapt CallbackTransactionSigner → SigningCallback.
+        // The 3-arg overload receives the locking script of the output being spent,
+        // resolves the owner address, and forwards it to the signing actor which
+        // uses addressToDerivationIndex to derive the correct key.
+        SigningCallback signingCallback = new SigningCallback() {
+            @Override public byte[] sign(byte[] sighash) { return request.signer().sign(sighash, 0); }
+            @Override public byte[] sign(byte[] sighash, int inputIndex, byte[] scriptPubKey) {
+                return request.signer().sign(sighash, inputIndex, scriptPubKey);
+            }
+        };
         PublicKey pubKey = PublicKey.fromHex(request.publicKeyHexes().get(0));
 
         try {

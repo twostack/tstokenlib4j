@@ -34,4 +34,22 @@ public interface SigningCallback {
      * @return DER-encoded signature bytes
      */
     byte[] sign(byte[] sighash);
+
+    /**
+     * Signs a sighash digest for a specific input, with the locking script
+     * of the output being spent. This allows the signer to resolve the
+     * owner address from the script and derive the correct signing key
+     * when the transaction spends outputs locked to different keys.
+     *
+     * <p>Default implementation ignores the script for backward
+     * compatibility with single-key signers.
+     *
+     * @param sighash        the double-SHA256 hash of the sighash preimage (32 bytes)
+     * @param inputIndex     the transaction input index being signed
+     * @param scriptPubKey   the locking script of the output being spent
+     * @return DER-encoded signature bytes
+     */
+    default byte[] sign(byte[] sighash, int inputIndex, byte[] scriptPubKey) {
+        return sign(sighash);
+    }
 }

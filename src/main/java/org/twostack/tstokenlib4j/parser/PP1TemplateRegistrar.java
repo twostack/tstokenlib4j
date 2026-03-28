@@ -20,5 +20,7 @@ public class PP1TemplateRegistrar {
         registry.register(new PP1RftTemplate());
         registry.register(new PP1NftTemplate());
         registry.register(new PP1FtTemplate());
+        // Utility scripts
+        registry.register(new ModP2PKHTemplate());
     }
 }

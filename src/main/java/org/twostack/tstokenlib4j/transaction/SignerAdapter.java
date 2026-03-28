@@ -3,8 +3,15 @@ package org.twostack.tstokenlib4j.transaction;
 import org.twostack.bitcoin4j.ECKey;
 import org.twostack.bitcoin4j.PrivateKey;
 import org.twostack.bitcoin4j.PublicKey;
+import org.twostack.bitcoin4j.exception.SigHashException;
+import org.twostack.bitcoin4j.exception.SignatureDecodeException;
+import org.twostack.bitcoin4j.exception.TransactionException;
 import org.twostack.bitcoin4j.transaction.SigHashType;
+import org.twostack.bitcoin4j.transaction.Transaction;
+import org.twostack.bitcoin4j.transaction.TransactionOutput;
 import org.twostack.bitcoin4j.transaction.TransactionSigner;
+
+import java.io.IOException;
 
 /**
  * Adapts a {@link SigningCallback} into a bitcoin4j {@link TransactionSigner}.
@@ -42,8 +49,8 @@ public final class SignerAdapter {
      * @return a TransactionSigner usable with {@code TransactionBuilder}
      */
     public static TransactionSigner fromCallback(SigningCallback callback, PublicKey publicKey, int sigHashType) {
-        PrivateKey proxyKey = new CallbackPrivateKey(callback, publicKey);
-        return new TransactionSigner(sigHashType, proxyKey);
+        CallbackPrivateKey proxyKey = new CallbackPrivateKey(callback, publicKey);
+        return new InputIndexAwareTransactionSigner(sigHashType, proxyKey);
     }
 
     /**
@@ -53,19 +60,52 @@ public final class SignerAdapter {
      * <p>The ECKey passed to the super constructor is public-key-only
      * (no private key material). Only {@code sign()} is overridden;
      * {@code getPublicKey()} works normally via the ECKey.
+     *
+     * <p>The {@code currentInputIndex} is set by the TransactionSigner
+     * before each sign call via the {@link #setCurrentInputIndex} method,
+     * allowing the signing callback to derive the correct key per input.
      */
-    private static final class CallbackPrivateKey extends PrivateKey {
+    static final class CallbackPrivateKey extends PrivateKey {
 
         private final SigningCallback callback;
+        private int currentInputIndex;
+        private byte[] currentScriptPubKey;
 
         CallbackPrivateKey(SigningCallback callback, PublicKey publicKey) {
             super(ECKey.fromPublicOnly(publicKey.getPubKeyBytes()));
             this.callback = callback;
         }
 
+        void setCurrentInput(int inputIndex, byte[] scriptPubKey) {
+            this.currentInputIndex = inputIndex;
+            this.currentScriptPubKey = scriptPubKey;
+        }
+
         @Override
         public byte[] sign(byte[] buffer) {
-            return callback.sign(buffer);
+            return callback.sign(buffer, currentInputIndex, currentScriptPubKey);
+        }
+    }
+
+    /**
+     * TransactionSigner that passes the locking script of the output being spent
+     * to the CallbackPrivateKey before each sign call, so the signing callback
+     * can resolve the owner address and derive the correct key.
+     */
+    private static final class InputIndexAwareTransactionSigner extends TransactionSigner {
+
+        private final CallbackPrivateKey callbackKey;
+
+        InputIndexAwareTransactionSigner(int sigHashType, CallbackPrivateKey callbackKey) {
+            super(sigHashType, callbackKey);
+            this.callbackKey = callbackKey;
+        }
+
+        @Override
+        public Transaction sign(Transaction unsignedTxn, TransactionOutput utxo, int inputIndex)
+                throws TransactionException, IOException, SigHashException, SignatureDecodeException {
+            callbackKey.setCurrentInput(inputIndex, utxo.getScript().getProgram());
+            return super.sign(unsignedTxn, utxo, inputIndex);
         }
     }
 }

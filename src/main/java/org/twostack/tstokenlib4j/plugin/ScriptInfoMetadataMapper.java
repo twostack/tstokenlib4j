@@ -5,6 +5,7 @@ import org.twostack.bitcoin4j.address.LegacyAddress;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.ScriptInfo;
 import org.twostack.tstokenlib4j.parser.*;
+import org.twostack.tstokenlib4j.parser.ModP2PKHScriptInfo;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -64,6 +65,11 @@ final class ScriptInfoMetadataMapper {
                 m.put("rabinPKH", hex(rft.getRabinPKH()));
                 m.put("flags", rft.getFlags());
                 m.put("amount", rft.getAmount());
+            }
+            case ModP2PKHScriptInfo mod -> {
+                m.put("scriptType", "mod_p2pkh");
+                m.put("ownerPKH", hex(mod.getOwnerPKH()));
+                m.put("ownerAddress", LegacyAddress.fromPubKeyHash(networkAddressType, mod.getOwnerPKH()).toBase58());
             }
             default -> { /* unrecognized ScriptInfo subclass */ }
         }
