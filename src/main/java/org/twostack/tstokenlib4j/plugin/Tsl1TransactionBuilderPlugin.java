@@ -544,13 +544,29 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireHexBytes(params, "parentStampsHash"));
             }
             case "at.witness" -> {
-                int fundingVout = resolveFundingVout(params, request);
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 // Accept raw hex directly to avoid read-model race after issuance/stamp
                 String tokenTxRawHex = optionalString(params, "tokenTxRawHex");
                 Transaction tokenTx = tokenTxRawHex != null
                         ? Transaction.fromHex(tokenTxRawHex)
                         : resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2 (output[2]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Extract the committed outpoint and find the matching UTXO.
+                byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
+                int fundingVout;
+                Transaction fundingTx;
+                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
+                if (matchedUtxo != null) {
+                    fundingVout = matchedUtxo.vout();
+                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
+                } else {
+                    // Fallback for paired path where the UTXO is already correct
+                    fundingVout = resolveFundingVout(params, request);
+                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                }
+
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
                 if ("0000000000000000000000000000000000000000000000000000000000000000".equals(parentTokenTxId)) {
@@ -563,8 +579,6 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 }
                 AppendableTokenAction atAction = AppendableTokenAction.valueOf(
                         requireString(params, "witnessAction"));
-                // tokenChangePKH must match the witness output lock (which uses pubKey),
-                // so derive it from the coordinator's pubKey rather than external params.
                 yield new AppendableTokenTool(networkAddressType).createWitnessTxn(
                         signer, pubKey, fundingTx, fundingVout, tokenTx, parentTokenTxBytes, pubKey,
                         pubKey.getPubKeyHash(),
@@ -925,6 +939,47 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             throw new IllegalArgumentException("Transaction not found in wallet: " + txid);
         }
         return Transaction.fromHex(rawHex);
+    }
+
+    /**
+     * Extract the 36-byte funding outpoint committed in a PP2 locking script.
+     * The PP2 template has a fixed 117-byte prefix; byte 117 is the pushdata
+     * opcode (0x24 = push 36), followed by the 36-byte outpoint (txid + LE vout).
+     */
+    private static byte[] extractPP2FundingOutpoint(byte[] pp2Script) {
+        if (pp2Script.length < 154 || pp2Script[117] != 0x24) {
+            throw new IllegalArgumentException(
+                    "Cannot extract funding outpoint from PP2 script: unexpected format"
+                    + " (length=" + pp2Script.length + ", byte[117]=0x"
+                    + String.format("%02x", pp2Script.length > 117 ? pp2Script[117] : 0) + ")");
+        }
+        byte[] outpoint = new byte[36];
+        System.arraycopy(pp2Script, 118, outpoint, 0, 36);
+        return outpoint;
+    }
+
+    /**
+     * Find the UTXO in the funding pool whose outpoint matches the 36-byte
+     * committed outpoint (32B txid in wire order + 4B LE vout).
+     */
+    private static org.twostack.libspiffy4j.model.BitcoinUtxo findUtxoByOutpoint(
+            byte[] committedOutpoint,
+            PluginTransactionRequest request) {
+        // committedOutpoint = txid (32B wire/LE) + vout (4B LE)
+        byte[] txidBytes = new byte[32];
+        System.arraycopy(committedOutpoint, 0, txidBytes, 0, 32);
+        String txidHex = Utils.HEX.encode(Utils.reverseBytes(txidBytes)); // display order
+        int vout = (committedOutpoint[32] & 0xFF)
+                | ((committedOutpoint[33] & 0xFF) << 8)
+                | ((committedOutpoint[34] & 0xFF) << 16)
+                | ((committedOutpoint[35] & 0xFF) << 24);
+
+        for (var utxo : request.fundingUtxos()) {
+            if (utxo.txid().equals(txidHex) && utxo.vout() == vout) {
+                return utxo;
+            }
+        }
+        return null;
     }
 
     private String resolveRawHex(TransactionLookup lookup, String txid) {
