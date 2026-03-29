@@ -171,7 +171,12 @@ public class StateMachineTool {
             long recoveryAmount,
             int nLockTime,
             int pp1OutputIndex,
-            int pp2OutputIndex)
+            int pp2OutputIndex,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
+            byte[] identityTxId,
+            byte[] ed25519PubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner signer = SignerAdapter.fromCallback(signerCallback, signerPubKey, sigHashAll);
@@ -212,7 +217,8 @@ public class StateMachineTool {
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 counterpartyShareAmount, operatorShareAmount, recoveryAmount,
-                null, null);
+                null, null,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         TransactionBuilder witnessBuilder1 = new TransactionBuilder()
                 .spendFromTransaction(signer, fundingTx, 1, seqNum, fundingUnlocker)
@@ -232,7 +238,8 @@ public class StateMachineTool {
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 counterpartyShareAmount, operatorShareAmount, recoveryAmount,
-                null, null);
+                null, null,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         TransactionBuilder witnessBuilder2 = new TransactionBuilder()
                 .spendFromTransaction(signer, fundingTx, 1, seqNum, fundingUnlocker)
@@ -313,7 +320,8 @@ public class StateMachineTool {
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
-                counterpartyPubkey, counterpartySigBytes);
+                counterpartyPubkey, counterpartySigBytes,
+                null, null, 0, null, null);
 
         Transaction witnessTx = new TransactionBuilder()
                 .spendFromTransaction(operatorSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -330,7 +338,8 @@ public class StateMachineTool {
                 tokenChangeAmount, tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 getOutpoint(fundingTx.getTransactionIdBytes()), eventData,
                 0, 0, 0,
-                counterpartyPubkey, counterpartySigBytes);
+                counterpartyPubkey, counterpartySigBytes,
+                null, null, 0, null, null);
 
         witnessTx = new TransactionBuilder()
                 .spendFromTransaction(operatorSigner, fundingTx, 1, TransactionInput.MAX_SEQ_NUMBER, fundingUnlocker)
@@ -894,13 +903,18 @@ public class StateMachineTool {
             byte[] tokenLHS, byte[] prevTokenTx, byte[] paddingBytes,
             byte[] fundingOutpoint, byte[] eventData,
             long counterpartyShareAmount, long operatorShareAmount, long recoveryAmount,
-            PublicKey counterpartyPubKey, byte[] counterpartySigBytes) {
+            PublicKey counterpartyPubKey, byte[] counterpartySigBytes,
+            byte[] rabinN, byte[] rabinS, int rabinPadding,
+            byte[] identityTxId, byte[] ed25519PubKey) {
 
         switch (action) {
             case CREATE:
-                // Rabin signing for CREATE will be added when Rabin params are plumbed through
                 return PP1SmUnlockBuilder.forCreate(preImage, fundingOutpoint, paddingBytes,
-                        new byte[0], new byte[0], 0, new byte[0], new byte[0]);
+                        rabinN != null ? rabinN : new byte[0],
+                        rabinS != null ? rabinS : new byte[0],
+                        rabinPadding,
+                        identityTxId != null ? identityTxId : new byte[0],
+                        ed25519PubKey != null ? ed25519PubKey : new byte[0]);
             case ENROLL:
                 return PP1SmUnlockBuilder.forEnroll(
                         preImage, pp2Output, operatorPubkey,

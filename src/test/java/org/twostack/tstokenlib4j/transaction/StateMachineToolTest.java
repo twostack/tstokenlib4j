@@ -126,7 +126,8 @@ public class StateMachineToolTest {
                 StateMachineAction.CREATE,
                 null,
                 0, 0, 0, -1,
-                1, 2);
+                1, 2,
+                null, null, 0, null, null);
     }
 
     private static byte[] sha256(byte[] data) throws Exception {
@@ -282,7 +283,8 @@ public class StateMachineToolTest {
                 StateMachineAction.ENROLL,
                 enrollEventData,
                 0, 0, 0, -1,
-                1, 2);
+                1, 2,
+                null, null, 0, null, null);
 
         // Step 5: Confirm transition (counterparty -> operator, state 1 -> 2)
         byte[] confirmEventData = "confirm".getBytes();
@@ -430,7 +432,8 @@ public class StateMachineToolTest {
                 StateMachineAction.ENROLL,
                 enrollEventData,
                 0, 0, 0, -1,
-                1, 2);
+                1, 2,
+                null, null, 0, null, null);
 
         // Step 5: Timeout (counterparty signs from ACTIVE state)
         Transaction timeoutFunding = Transaction.fromHex(BOB_FUNDING_TX_HEX);

@@ -56,7 +56,9 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             "ft.mint", "ft.transfer", "ft.split", "ft.merge", "ft.witness", "ft.burn",
             "at.issue", "at.issueWithWitness", "at.transfer", "at.stamp", "at.stampWithWitness",
             "at.witness", "at.burn", "at.redeem",
-            "sm.create", "sm.enroll", "sm.transition", "sm.settle", "sm.timeout", "sm.witness", "sm.burn",
+            "sm.create", "sm.createWithWitness", "sm.enroll", "sm.enrollWithWitness",
+            "sm.transition", "sm.transitionWithWitness", "sm.settle", "sm.settleWithWitness",
+            "sm.timeout", "sm.timeoutWithWitness", "sm.witness", "sm.burn",
             "rnft.issue", "rnft.transfer", "rnft.witness", "rnft.burn", "rnft.redeem",
             "rft.mint", "rft.transfer", "rft.split", "rft.merge", "rft.witness", "rft.burn", "rft.redeem",
             "funding.provision");
@@ -196,7 +198,11 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to build transaction for action '" + action + "': " + e.getMessage(), e);
+            // Include the stack trace location in the message for NPEs
+            String location = e.getStackTrace().length > 0
+                    ? " at " + e.getStackTrace()[0] : "";
+            throw new RuntimeException("Failed to build transaction for action '" + action + "': "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage() + location, e);
         }
     }
 
@@ -213,15 +219,26 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         TransactionLookup lookup = request.transactionLookup();
         String baseAction = action.replace("WithWitness", "");
 
-        // Determine witness action type
+        // Determine witness action type and witness dispatch action
         String witnessAction;
-        if (baseAction.equals("at.issue")) {
-            witnessAction = "ISSUANCE";
+        String witnessDispatchAction;
+        boolean isSm = baseAction.startsWith("sm.");
+        if (baseAction.equals("at.issue") || baseAction.equals("sm.create")) {
+            witnessAction = isSm ? "CREATE" : "ISSUANCE";
         } else if (baseAction.equals("at.stamp")) {
             witnessAction = "STAMP";
+        } else if (baseAction.equals("sm.enroll")) {
+            witnessAction = "ENROLL";
+        } else if (baseAction.equals("sm.transition")) {
+            witnessAction = "CONFIRM";
+        } else if (baseAction.equals("sm.settle")) {
+            witnessAction = "SETTLE";
+        } else if (baseAction.equals("sm.timeout")) {
+            witnessAction = "TIMEOUT";
         } else {
             throw new IllegalArgumentException("Paired action not supported: " + action);
         }
+        witnessDispatchAction = isSm ? "sm.witness" : "at.witness";
 
         // Build the token TX (uses fundingUtxos[0], commits to fundingUtxos[1] in PP2)
         Transaction tokenTx = dispatchBuild(baseAction, params, request, signer, pubKey);
@@ -232,17 +249,16 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         // The witness TX uses fundingUtxos[1] for funding — the same UTXO
         // that was committed in PP2 during the token TX build.
         Map<String, Object> witnessParams = new HashMap<>(params);
-        witnessParams.put("action", "at.witness");
+        witnessParams.put("action", witnessDispatchAction);
         witnessParams.put("tokenTxRawHex", tokenRawHex);
         witnessParams.put("witnessAction", witnessAction);
-        if ("ISSUANCE".equals(witnessAction)) {
-            witnessParams.put("parentTokenTxId", Utils.HEX.encode(new byte[32]));
-
-            // Compute Rabin signature now that tokenId is known.
-            // The tokenId is the funding TX's txid (= issuance TX's input[0] outpoint txid).
+        if ("ISSUANCE".equals(witnessAction) || "CREATE".equals(witnessAction)) {
+            witnessParams.put("parentTokenTxId", tokenTxid);
+            witnessParams.put("parentTokenTxRawHex", tokenRawHex);
+            // Compute Rabin signature for identity binding
             computeAndSetRabinSignature(witnessParams, tokenTx);
         } else {
-            // For stamp witness, the parent token TX is the prev token TX
+            // For subsequent actions, the parent token TX is the prev token TX
             witnessParams.put("parentTokenTxId", requireString(params, "prevTokenTxId"));
             if (params.containsKey("prevTokenTxRawHex")) {
                 witnessParams.put("parentTokenTxRawHex", params.get("prevTokenTxRawHex"));
@@ -258,7 +274,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 witnessFundingUtxos, request.signer(), request.transactionLookup(),
                 request.publicKeyHexes(), witnessParams);
 
-        Transaction witnessTx = dispatchBuild("at.witness", witnessParams, witnessRequest, signer, pubKey);
+        Transaction witnessTx = dispatchBuild(witnessDispatchAction, witnessParams, witnessRequest, signer, pubKey);
         String witnessTxid = witnessTx.getTransactionId();
         String witnessRawHex = Utils.HEX.encode(witnessTx.serialize());
 
@@ -606,16 +622,27 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             }
 
             // ── SM ──
+            // operatorPKH and operatorAddress are derived from the coordinator's
+            // signing key (pubKey), not accepted from the caller. The coordinator's
+            // key is the one that signs PP1 spends — passing a different PKH causes
+            // OP_EQUALVERIFY failure at witness time.
             case "sm.create" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                byte[] operatorPKH = pubKey.getPubKeyHash();
+                Address operatorAddress = LegacyAddress.fromPubKeyHash(networkAddressType, operatorPKH);
+                // Issuance is always to self. counterpartyPKH defaults to operatorPKH
+                // (the coordinator's own key). A real counterparty is set via transfer.
+                byte[] counterpartyPKH = optionalHexBytes(params, "counterpartyPKH");
+                if (counterpartyPKH == null) counterpartyPKH = operatorPKH;
+                byte[] witnessFundingTxId = resolveWitnessFundingTxId(params, request);
                 yield new StateMachineTool(networkAddressType).createTokenIssuanceTxn(
                         fundingTx, signer, pubKey,
-                        requireAddress(params, "operatorAddress", networkAddressType),
-                        requireHexBytes(params, "operatorPKH"),
-                        requireHexBytes(params, "counterpartyPKH"),
+                        operatorAddress,
+                        operatorPKH,
+                        counterpartyPKH,
                         requireInt(params, "transitionBitmask"),
                         requireInt(params, "timeoutDelta"),
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        witnessFundingTxId,
                         requireHexBytes(params, "rabinPKH"),
                         optionalHexBytes(params, "metadataBytes"));
             }
@@ -623,13 +650,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] operatorPKH = pubKey.getPubKeyHash();
                 yield new StateMachineTool(networkAddressType).createEnrollTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         optionalHexBytes(params, "eventData"),
                         requireHexBytes(params, "tokenId"),
-                        requireHexBytes(params, "operatorPKH"),
+                        operatorPKH,
                         requireHexBytes(params, "counterpartyPKH"),
                         requireInt(params, "state"),
                         requireInt(params, "checkpointCount"),
@@ -641,16 +669,20 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] operatorPKH = pubKey.getPubKeyHash();
+                // newOwnerPKH defaults to operatorPKH when not provided (operator retains ownership)
+                byte[] newOwnerPKH = optionalHexBytes(params, "newOwnerPKH");
+                if (newOwnerPKH == null) newOwnerPKH = operatorPKH;
                 yield new StateMachineTool(networkAddressType).createTransitionTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireInt(params, "newState"),
-                        requireHexBytes(params, "newOwnerPKH"),
+                        newOwnerPKH,
                         requireBoolean(params, "incrementCheckpoint"),
                         optionalHexBytes(params, "eventData"),
                         requireHexBytes(params, "tokenId"),
-                        requireHexBytes(params, "operatorPKH"),
+                        operatorPKH,
                         requireHexBytes(params, "counterpartyPKH"),
                         requireInt(params, "state"),
                         requireInt(params, "checkpointCount"),
@@ -662,15 +694,16 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] operatorPKH = pubKey.getPubKeyHash();
                 yield new StateMachineTool(networkAddressType).createSettleTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         BigInteger.valueOf(requireLong(params, "counterpartyShareAmount")),
                         BigInteger.valueOf(requireLong(params, "operatorShareAmount")),
                         optionalHexBytes(params, "eventData"),
                         requireHexBytes(params, "tokenId"),
-                        requireHexBytes(params, "operatorPKH"),
+                        operatorPKH,
                         requireHexBytes(params, "counterpartyPKH"),
                         requireInt(params, "state"),
                         requireInt(params, "checkpointCount"),
@@ -682,14 +715,15 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] operatorPKH = pubKey.getPubKeyHash();
                 yield new StateMachineTool(networkAddressType).createTimeoutTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         BigInteger.valueOf(requireLong(params, "recoveryAmount")),
                         requireInt(params, "nLockTime"),
                         requireHexBytes(params, "tokenId"),
-                        requireHexBytes(params, "operatorPKH"),
+                        operatorPKH,
                         requireHexBytes(params, "counterpartyPKH"),
                         requireInt(params, "state"),
                         requireInt(params, "checkpointCount"),
@@ -698,15 +732,57 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         requireInt(params, "timeoutDelta"));
             }
             case "sm.witness" -> {
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                // Accept raw hex directly to avoid read-model race after token TX
+                String tokenTxRawHex = optionalString(params, "tokenTxRawHex");
+                Transaction tokenTx = tokenTxRawHex != null
+                        ? Transaction.fromHex(tokenTxRawHex)
+                        : resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2 (output[2]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Same pattern as at.witness — extract committed outpoint, find matching UTXO.
+                byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
+                Transaction fundingTx;
+                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
+                if (matchedUtxo != null) {
+                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
+                } else {
+                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                }
+
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                String parentRawHex = optionalString(params, "parentTokenTxRawHex");
+                if (parentRawHex != null) {
+                    parentTokenTxBytes = Utils.HEX.decode(parentRawHex);
+                } else {
+                    parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
+
                 StateMachineAction smAction = StateMachineAction.valueOf(
                         requireString(params, "witnessAction"));
+                // tokenChangePKH and operatorPKH derived from coordinator's signing key
+                byte[] tokenChangePKH = pubKey.getPubKeyHash();
+
+                // For CREATE witness, compute Rabin signature if private key material
+                // is available (same pattern as at.witness ISSUANCE).
+                byte[] rabinN = null, rabinS = null, identityTxId = null, ed25519PubKey = null;
+                int rabinPadding = 0;
+                if (smAction == StateMachineAction.CREATE) {
+                    // params may be immutable; use a mutable copy for Rabin computation
+                    Map<String, Object> rabinParams = new HashMap<>(params);
+                    computeAndSetRabinSignature(rabinParams, tokenTx);
+                    rabinN = optionalHexBytes(rabinParams, "rabinN");
+                    rabinS = optionalHexBytes(rabinParams, "rabinS");
+                    rabinPadding = optionalInt(rabinParams, "rabinPadding", 0);
+                    identityTxId = optionalHexBytes(rabinParams, "identityTxId");
+                    ed25519PubKey = optionalHexBytes(rabinParams, "ed25519PubKey");
+                }
+
                 yield new StateMachineTool(networkAddressType).createWitnessTxn(
                         signer, pubKey, fundingTx, tokenTx, parentTokenTxBytes, pubKey,
-                        requireHexBytes(params, "tokenChangePKH"),
+                        tokenChangePKH,
                         smAction,
                         optionalHexBytes(params, "eventData"),
                         optionalLong(params, "counterpartyShareAmount", 0),
@@ -714,7 +790,8 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalLong(params, "recoveryAmount", 0),
                         optionalInt(params, "nLockTime", 0),
                         optionalInt(params, "pp1OutputIndex", 1),
-                        optionalInt(params, "pp2OutputIndex", 2));
+                        optionalInt(params, "pp2OutputIndex", 2),
+                        rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
             }
             case "sm.burn" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
@@ -946,6 +1023,21 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
      * The PP2 template has a fixed 117-byte prefix; byte 117 is the pushdata
      * opcode (0x24 = push 36), followed by the 36-byte outpoint (txid + LE vout).
      */
+    /**
+     * Derive the witness funding txid from the coordinator's UTXO pool.
+     * Uses fundingUtxos[1] when available (same key as token TX funding).
+     * Falls back to explicit param for backward compatibility.
+     */
+    private byte[] resolveWitnessFundingTxId(Map<String, Object> params,
+                                              PluginTransactionRequest request) {
+        if (request.fundingUtxos().size() > 1) {
+            var witnessUtxo = request.fundingUtxos().get(1);
+            return Utils.reverseBytes(Utils.HEX.decode(witnessUtxo.txid()));
+        }
+        byte[] txId = optionalHexBytes(params, "witnessFundingTxId");
+        return txId != null ? txId : new byte[32];
+    }
+
     private static byte[] extractPP2FundingOutpoint(byte[] pp2Script) {
         if (pp2Script.length < 154 || pp2Script[117] != 0x24) {
             throw new IllegalArgumentException(
@@ -1056,9 +1148,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         org.twostack.tstokenlib4j.crypto.RabinSignature sig =
                 org.twostack.tstokenlib4j.crypto.Rabin.sign(messageHash, p, q);
 
+        java.math.BigInteger n = p.multiply(q);
+        params.put("rabinN", Utils.HEX.encode(
+                org.twostack.tstokenlib4j.crypto.Rabin.bigIntToScriptNum(n)));
         params.put("rabinS", Utils.HEX.encode(
                 org.twostack.tstokenlib4j.crypto.Rabin.bigIntToScriptNum(sig.s())));
         params.put("rabinPadding", sig.padding());
+        params.put("identityTxId", Utils.HEX.encode(identityTxId));
+        params.put("ed25519PubKey", Utils.HEX.encode(ed25519PubKey));
 
         // Remove private key material from params
         params.remove("rabinP");
