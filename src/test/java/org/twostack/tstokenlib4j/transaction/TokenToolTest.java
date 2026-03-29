@@ -11,8 +11,10 @@ import org.twostack.bitcoin4j.Coin;
 import org.twostack.bitcoin4j.params.NetworkAddressType;
 import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
+import org.twostack.bitcoin4j.transaction.SigHash;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
+import org.twostack.bitcoin4j.transaction.TransactionInput;
 import org.twostack.tstokenlib4j.crypto.Rabin;
 import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
 import org.twostack.tstokenlib4j.crypto.RabinSignature;
@@ -467,6 +469,35 @@ public class TokenToolTest {
         Interpreter.executeScript(witnessTx, 1, scriptPubKey, stack,
                 Coin.valueOf(pp1Sats), flags);
         assertEquals("PP1 NFT issuance witness must leave clean stack", 1, stack.size());
+    }
+
+    // ──── PP2 witness verification (matching Dart plugpoint_spending_test) ────
+
+    @Test
+    public void testIssuanceWitnessPP2Spend() throws Exception {
+        // Use the SAME funding TX for both issuance and witness (matching Dart test).
+        // PP2 embeds the witness funding outpoint; the witness TX must use that exact UTXO.
+        Transaction issuanceTx = tokenTool.createTokenIssuanceTxn(
+                bobFundingTx, 1, bobSigningCallback(), bobPub, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, new byte[0]);
+
+        Transaction witnessTx = createWitness(
+                bobSigningCallback(), bobPub,
+                bobFundingTx, issuanceTx, new byte[0],
+                bobPub, bobAddress.getHash(), TokenAction.ISSUANCE);
+
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.LOW_S,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS,
+                Script.VerifyFlag.MINIMALDATA);
+
+        Script scriptSig = witnessTx.getInputs().get(2).getScriptSig();
+        Script scriptPubKey = issuanceTx.getOutputs().get(2).getScript();
+        long pp2Sats = issuanceTx.getOutputs().get(2).getAmount().longValue();
+
+        new Interpreter().correctlySpends(scriptSig, scriptPubKey, witnessTx, 2,
+                flags, Coin.valueOf(pp2Sats));
     }
 
     // ──── Clean stack verification for transfer witness PP1 ────────────
