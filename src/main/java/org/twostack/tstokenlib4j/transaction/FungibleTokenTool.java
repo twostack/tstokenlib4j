@@ -126,7 +126,7 @@ public class FungibleTokenTool {
                 getOutpoint(witnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2), BigInteger.ONE);
 
         // Output 3: PP3-FT (partial SHA256 witness verifier)
-        tokenTxBuilder.spendTo(new PartialWitnessFtLockBuilder(recipientPKH), BigInteger.ONE);
+        tokenTxBuilder.spendTo(new PartialWitnessFtLockBuilder(recipientPKH, 2), BigInteger.ONE);
 
         // Output 4: Metadata (OP_RETURN)
         tokenTxBuilder.spendTo(new MetadataLockBuilder(metadataBytes), BigInteger.ZERO);
@@ -184,7 +184,7 @@ public class FungibleTokenTool {
         PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, amount);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH);
+        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH, 2);
 
         // Carry forward metadata from parent token tx (last output)
         Script metadataScript = prevTokenTx.getOutputs().get(prevTokenTx.getOutputs().size() - 1).getScript();
@@ -283,13 +283,13 @@ public class FungibleTokenTool {
         PP1FtLockBuilder pp1FtRecipientLocker = new PP1FtLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, sendAmount);
         PP2FtLockBuilder pp2FtRecipientLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH);
+        PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH, 2);
 
         // Change triplet (outputs 4,5,6)
         PP1FtLockBuilder pp1FtChangeLocker = new PP1FtLockBuilder(senderPKH, tokenId, rabinPubKeyHash, changeTokenAmount);
         PP2FtLockBuilder pp2FtChangeLocker = new PP2FtLockBuilder(
                 getOutpoint(changeWitnessFundingTxId), senderPKH, 1, senderPKH, 4, 5);
-        PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH);
+        PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH, 5);
 
         // Metadata (carried forward from parent, last output)
         Script metadataScript = prevTokenTx.getOutputs().get(prevTokenTx.getOutputs().size() - 1).getScript();
@@ -400,7 +400,7 @@ public class FungibleTokenTool {
         PP1FtLockBuilder pp1FtLocker = new PP1FtLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, totalAmount);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(mergedWitnessFundingTxId), ownerPKH, 1, ownerPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH);
+        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH, 2);
 
         // Carry forward metadata from parent A (last output)
         Script metadataScript = prevTokenTxA.getOutputs().get(prevTokenTxA.getOutputs().size() - 1).getScript();

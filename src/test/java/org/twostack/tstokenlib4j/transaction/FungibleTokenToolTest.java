@@ -811,9 +811,24 @@ public class FungibleTokenToolTest {
         verifySpend(splitTx, 1, mintWitnessTx, 0);
         verifySpend(splitTx, 2, mintTx, 3);
 
-        // TODO: Split witness PP1 verification fails — 32-byte hash mismatch in PP1_FT
-        // SPLIT_TRANSFER output structure check. The Dart equivalent passes (merge test,
-        // step 4), so the bug is in the Java buildPP1FtUnlocker SPLIT_TRANSFER path.
-        // Tracked in beads issue tracker.
+        // Witness for recipient triplet (base index 1)
+        Transaction recipientWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(), bobPubKey, recipientWitnessFundingTx, splitTx, bobPubKey,
+                bobAddress.getHash(), FungibleTokenAction.SPLIT_TRANSFER,
+                mintTx.serialize(), mintTx.getOutputs().size(), 1,
+                null, 0, 1, 0, 0, 0, null,
+                null, null, 0, null, null);
+        assertEquals(1, recipientWitnessTx.getOutputs().size());
+        verifySpend(recipientWitnessTx, 1, splitTx, 1); // PP1_FT split witness
+
+        // Witness for change triplet (base index 4)
+        Transaction changeWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(), bobPubKey, changeWitnessFundingTx, splitTx, bobPubKey,
+                bobAddress.getHash(), FungibleTokenAction.SPLIT_TRANSFER,
+                mintTx.serialize(), mintTx.getOutputs().size(), 4,
+                null, 0, 1, 0, 0, 0, null,
+                null, null, 0, null, null);
+        assertEquals(1, changeWitnessTx.getOutputs().size());
+        verifySpend(changeWitnessTx, 1, splitTx, 4); // PP1_FT change witness
     }
 }

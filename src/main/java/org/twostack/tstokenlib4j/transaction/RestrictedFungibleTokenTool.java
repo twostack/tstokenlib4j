@@ -115,7 +115,7 @@ public class RestrictedFungibleTokenTool {
                 getOutpoint(witnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2), BigInteger.ONE);
 
         // Output 3: PP3-FT
-        tokenTxBuilder.spendTo(new PartialWitnessFtLockBuilder(recipientPKH), BigInteger.ONE);
+        tokenTxBuilder.spendTo(new PartialWitnessFtLockBuilder(recipientPKH, 2), BigInteger.ONE);
 
         // Output 4: Metadata OP_RETURN
         tokenTxBuilder.spendTo(new MetadataLockBuilder(metadataBytes), BigInteger.ZERO);
@@ -367,7 +367,7 @@ public class RestrictedFungibleTokenTool {
         PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, amount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH);
+        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(recipientPKH, 2);
 
         // Carry forward metadata from parent token tx (last output)
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
@@ -470,13 +470,13 @@ public class RestrictedFungibleTokenTool {
         PP1RftLockBuilder pp1RftRecipientLocker = new PP1RftLockBuilder(recipientPKH, tokenId, rabinPubKeyHash, flags, sendAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtRecipientLocker = new PP2FtLockBuilder(
                 getOutpoint(recipientWitnessFundingTxId), recipientPKH, 1, recipientPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH);
+        PartialWitnessFtLockBuilder pp3FtRecipientLocker = new PartialWitnessFtLockBuilder(recipientPKH, 2);
 
         // Change triplet (outputs 4,5,6)
         PP1RftLockBuilder pp1RftChangeLocker = new PP1RftLockBuilder(senderPKH, tokenId, rabinPubKeyHash, flags, changeTokenAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtChangeLocker = new PP2FtLockBuilder(
                 getOutpoint(changeWitnessFundingTxId), senderPKH, 1, senderPKH, 4, 5);
-        PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH);
+        PartialWitnessFtLockBuilder pp3FtChangeLocker = new PartialWitnessFtLockBuilder(senderPKH, 5);
 
         // Metadata (carried forward from parent, last output)
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
@@ -587,7 +587,7 @@ public class RestrictedFungibleTokenTool {
         PP1RftLockBuilder pp1RftLocker = new PP1RftLockBuilder(ownerPKH, tokenId, rabinPubKeyHash, flags, totalAmount, tokenSupply, merkleRoot);
         PP2FtLockBuilder pp2FtLocker = new PP2FtLockBuilder(
                 getOutpoint(mergedWitnessFundingTxId), ownerPKH, 1, ownerPKH, 1, 2);
-        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH);
+        PartialWitnessFtLockBuilder pp3FtLocker = new PartialWitnessFtLockBuilder(ownerPKH, 2);
 
         // Carry forward metadata from parent A (last output)
         DefaultLockBuilder metadataLocker = new DefaultLockBuilder(
