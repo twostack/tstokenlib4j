@@ -392,10 +392,13 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
             // ── FT ──
             case "ft.mint" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                // PP2 embeds the outpoint that will fund the witness TX — derive from
+                // fundingUtxos[1] (same pattern as at.issue). Falls back to caller param.
+                byte[] witnessFundingTxId = resolveWitnessFundingTxId(params, request);
                 yield new FungibleTokenTool(networkAddressType).createFungibleMintTxn(
                         fundingTx, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        witnessFundingTxId,
                         requireHexBytes(params, "rabinPubKeyHash"),
                         requireLong(params, "amount"),
                         optionalHexBytes(params, "metadataBytes"));
@@ -404,11 +407,12 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] witnessFundingTxId = resolveWitnessFundingTxId(params, request);
                 yield new FungibleTokenTool(networkAddressType).createFungibleTransferTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        witnessFundingTxId,
                         requireHexBytes(params, "tokenId"),
                         requireLong(params, "amount"),
                         optionalInt(params, "prevTripletBaseIndex", 1));
@@ -417,13 +421,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction prevWitnessTx = resolveTransaction(lookup, requireString(params, "prevWitnessTxId"));
                 Transaction prevTokenTx = resolveTransaction(lookup, requireString(params, "prevTokenTxId"));
+                byte[] witnessFundingTxId = resolveWitnessFundingTxId(params, request);
                 yield new FungibleTokenTool(networkAddressType).createFungibleSplitTxn(
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         requireLong(params, "sendAmount"),
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "recipientWitnessFundingTxId"),
-                        requireHexBytes(params, "changeWitnessFundingTxId"),
+                        witnessFundingTxId,
+                        witnessFundingTxId,
                         requireHexBytes(params, "tokenId"),
                         requireLong(params, "totalAmount"),
                         optionalInt(params, "prevTripletBaseIndex", 1));
@@ -434,38 +439,82 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction prevTokenTxA = resolveTransaction(lookup, requireString(params, "prevTokenTxIdA"));
                 Transaction prevWitnessTxB = resolveTransaction(lookup, requireString(params, "prevWitnessTxIdB"));
                 Transaction prevTokenTxB = resolveTransaction(lookup, requireString(params, "prevTokenTxIdB"));
+                byte[] witnessFundingTxId = resolveWitnessFundingTxId(params, request);
                 yield new FungibleTokenTool(networkAddressType).createFungibleMergeTxn(
                         prevWitnessTxA, prevTokenTxA, prevWitnessTxB, prevTokenTxB,
                         pubKey, signer, fundingTx, signer, pubKey,
-                        requireHexBytes(params, "mergedWitnessFundingTxId"),
+                        witnessFundingTxId,
                         requireHexBytes(params, "tokenId"),
                         requireLong(params, "totalAmount"),
                         optionalInt(params, "prevTripletBaseIndexA", 1),
                         optionalInt(params, "prevTripletBaseIndexB", 1));
             }
             case "ft.witness" -> {
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+                // Accept raw hex directly to avoid read-model race after mint/transfer/split
+                String tokenTxRawHex = optionalString(params, "tokenTxRawHex");
+                Transaction tokenTx = tokenTxRawHex != null
+                        ? Transaction.fromHex(tokenTxRawHex)
+                        : resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2-FT outpoint matching: extract committed outpoint from PP2 output,
+                // find matching UTXO in funding pool (same pattern as at.witness/sm.witness).
+                int tripletBaseIndex = optionalInt(params, "tripletBaseIndex", 1);
+                int pp2Index = tripletBaseIndex + 1;
+                byte[] pp2Script = tokenTx.getOutputs().get(pp2Index).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FtFundingOutpoint(pp2Script);
+                Transaction fundingTx;
+                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
+                if (matchedUtxo != null) {
+                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
+                } else {
+                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
+                }
+
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                if (parentTokenTxId.matches("^0+$")) {
+                    parentTokenTxBytes = new byte[0]; // mint has no parent token
+                } else {
+                    String parentRawHex = optionalString(params, "parentTokenTxRawHex");
+                    parentTokenTxBytes = parentRawHex != null
+                            ? Utils.HEX.decode(parentRawHex)
+                            : Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
                 FungibleTokenAction ftAction = FungibleTokenAction.valueOf(
                         requireString(params, "witnessAction"));
                 String parentTokenTxIdB = optionalString(params, "parentTokenTxIdB");
                 byte[] parentTokenTxBytesB = parentTokenTxIdB != null
                         ? Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxIdB)) : null;
+
+                // For MINT witness, compute Rabin signature for identity binding
+                // (same pattern as at.witness ISSUANCE and sm.witness CREATE).
+                byte[] rabinN = null, rabinS = null, identityTxId = null, ed25519PubKey = null;
+                int rabinPaddingVal = 0;
+                if (ftAction == FungibleTokenAction.MINT) {
+                    Map<String, Object> mutableParams = new HashMap<>(params);
+                    computeAndSetRabinSignature(mutableParams, tokenTx);
+                    rabinN = optionalHexBytes(mutableParams, "rabinN");
+                    rabinS = optionalHexBytes(mutableParams, "rabinS");
+                    rabinPaddingVal = optionalInt(mutableParams, "rabinPadding", 0);
+                    identityTxId = optionalHexBytes(mutableParams, "identityTxId");
+                    ed25519PubKey = optionalHexBytes(mutableParams, "ed25519PubKey");
+                }
+
                 yield new FungibleTokenTool(networkAddressType).createFungibleWitnessTxn(
                         signer, pubKey, fundingTx, tokenTx, pubKey,
                         requireHexBytes(params, "tokenChangePKH"),
                         ftAction, parentTokenTxBytes,
                         requireInt(params, "parentOutputCount"),
-                        optionalInt(params, "tripletBaseIndex", 1),
+                        tripletBaseIndex,
                         parentTokenTxBytesB,
                         optionalInt(params, "parentOutputCountB", 0),
                         optionalInt(params, "parentPP1FtIndexA", 1),
                         optionalInt(params, "parentPP1FtIndexB", 0),
                         optionalLong(params, "sendAmount", 0),
                         optionalLong(params, "changeAmount", 0),
-                        optionalHexBytes(params, "recipientPKH"));
+                        optionalHexBytes(params, "recipientPKH"),
+                        rabinN, rabinS, rabinPaddingVal,
+                        identityTxId, ed25519PubKey);
             }
             case "ft.burn" -> {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
@@ -1047,6 +1096,23 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
         }
         byte[] outpoint = new byte[36];
         System.arraycopy(pp2Script, 118, outpoint, 0, 36);
+        return outpoint;
+    }
+
+    /**
+     * Extract the committed 36-byte funding outpoint from a PP2_FT script.
+     * PP2_FT has additional output-index parameters vs PP2, shifting the outpoint
+     * to byte offset 120 (pushdata opcode 0x24 at offset 119).
+     */
+    private static byte[] extractPP2FtFundingOutpoint(byte[] pp2FtScript) {
+        if (pp2FtScript.length < 156 || pp2FtScript[119] != 0x24) {
+            throw new IllegalArgumentException(
+                    "Cannot extract funding outpoint from PP2_FT script: unexpected format"
+                    + " (length=" + pp2FtScript.length + ", byte[119]=0x"
+                    + String.format("%02x", pp2FtScript.length > 119 ? pp2FtScript[119] : 0) + ")");
+        }
+        byte[] outpoint = new byte[36];
+        System.arraycopy(pp2FtScript, 120, outpoint, 0, 36);
         return outpoint;
     }
 

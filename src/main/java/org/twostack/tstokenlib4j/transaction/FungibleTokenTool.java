@@ -68,6 +68,22 @@ public class FungibleTokenTool {
     }
 
     /**
+     * Decodes the fungible token amount from a PP1_FT locking script.
+     * The amount is an 8-byte LE sign-magnitude integer at bytes 76..83.
+     */
+    private static long decodePP1FtAmount(byte[] pp1Script) {
+        long value = 0;
+        for (int i = 0; i < 8; i++) {
+            value |= ((long) (pp1Script[76 + i] & 0xFF)) << (8 * i);
+        }
+        // Sign-magnitude: if highest bit is set, the number is negative
+        if ((value & (1L << 63)) != 0) {
+            value = -(value & ~(1L << 63));
+        }
+        return value;
+    }
+
+    /**
      * Creates a 5-output fungible token mint transaction.
      *
      * <p>Outputs: [Change, PP1_FT, PP2-FT, PP3-FT, Metadata]
@@ -453,7 +469,12 @@ public class FungibleTokenTool {
             int parentPP1FtIndexB,
             long sendAmount,
             long changeAmount,
-            byte[] recipientPKH)
+            byte[] recipientPKH,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
+            byte[] identityTxId,
+            byte[] ed25519PubKey)
             throws TransactionException, IOException, SigHashException, SignatureDecodeException {
 
         TransactionSigner signer = SignerAdapter.fromCallback(fundingSigner, fundingPubKey, sigHashAll);
@@ -487,7 +508,8 @@ public class FungibleTokenTool {
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
-                sendAmount, changeAmount, recipientPKH);
+                sendAmount, changeAmount, recipientPKH,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         Transaction witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1FtUnlocker, pp2FtUnlocker, witnessLocker);
@@ -500,7 +522,8 @@ public class FungibleTokenTool {
                 tokenTxLHS, parentTokenTxBytes, paddingBytes,
                 parentOutputCount, tripletBaseIndex, getOutpoint(fundingTx.getTransactionIdBytes()),
                 parentTokenTxBytesB, parentOutputCountB, parentPP1FtIndexA, parentPP1FtIndexB,
-                sendAmount, changeAmount, recipientPKH);
+                sendAmount, changeAmount, recipientPKH,
+                rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey);
 
         witnessTx = buildWitnessTxn(signer, fundingTx, tokenTx,
                 pp1FtIndex, pp2Index, ownerPubkey, pp1FtUnlocker, pp2FtUnlocker, witnessLocker);
@@ -568,15 +591,23 @@ public class FungibleTokenTool {
             int parentPP1FtIndexB,
             long sendAmount,
             long changeAmount,
-            byte[] recipientPKH) throws IOException {
+            byte[] recipientPKH,
+            byte[] rabinN,
+            byte[] rabinS,
+            int rabinPadding,
+            byte[] identityTxId,
+            byte[] ed25519PubKey) throws IOException {
 
         int pp2Index = tripletBaseIndex + 1;
         long tokenChangeAmount = tokenTx.getOutputs().get(0).getAmount().longValue();
 
         if (action == FungibleTokenAction.MINT) {
-            // Rabin signing for MINT will be added when Rabin params are plumbed through
             return PP1FtUnlockBuilder.forMint(preImage, fundingOutpoint, paddingBytes,
-                    new byte[0], new byte[0], 0, new byte[0], new byte[0]);
+                    rabinN != null ? rabinN : new byte[0],
+                    rabinS != null ? rabinS : new byte[0],
+                    rabinPadding,
+                    identityTxId != null ? identityTxId : new byte[0],
+                    ed25519PubKey != null ? ed25519PubKey : new byte[0]);
         } else if (action == FungibleTokenAction.TRANSFER) {
             byte[] pp2Output = tokenTx.getOutputs().get(pp2Index).serialize();
             return PP1FtUnlockBuilder.forTransfer(
@@ -587,12 +618,21 @@ public class FungibleTokenTool {
             byte[] pp2RecipientOutput = tokenTx.getOutputs().get(2).serialize();
             byte[] pp2ChangeOutput = tokenTx.getOutputs().get(5).serialize();
 
+            // Derive split amounts and recipientPKH from the token TX's PP1 outputs
+            // (matching Dart _buildPP1FtUnlocker which calls PP1FtLockBuilder.fromScript)
+            byte[] recipientPP1Script = tokenTx.getOutputs().get(1).getScript().getProgram();
+            byte[] changePP1Script = tokenTx.getOutputs().get(4).getScript().getProgram();
+            long derivedSendAmount = decodePP1FtAmount(recipientPP1Script);
+            long derivedChangeAmount = decodePP1FtAmount(changePP1Script);
+            byte[] derivedRecipientPKH = new byte[20];
+            System.arraycopy(recipientPP1Script, 1, derivedRecipientPKH, 0, 20);
+
             return PP1FtUnlockBuilder.forSplitTransfer(
                     preImage, pp2RecipientOutput, pp2ChangeOutput, ownerPubkey,
                     tokenChangePKH, tokenChangeAmount, tokenTxLHS,
                     parentTokenTxBytes, paddingBytes,
-                    sendAmount, changeAmount,
-                    recipientPKH, tripletBaseIndex, parentOutputCount,
+                    derivedSendAmount, derivedChangeAmount,
+                    derivedRecipientPKH, tripletBaseIndex, parentOutputCount,
                     parentPP1FtIndexA);
         } else if (action == FungibleTokenAction.MERGE) {
             byte[] pp2Output = tokenTx.getOutputs().get(2).serialize();

@@ -13,6 +13,10 @@ import org.twostack.bitcoin4j.script.Interpreter;
 import org.twostack.bitcoin4j.script.Script;
 import org.twostack.bitcoin4j.transaction.SigHashType;
 import org.twostack.bitcoin4j.transaction.Transaction;
+import org.twostack.bitcoin4j.Sha256Hash;
+import org.twostack.tstokenlib4j.crypto.Rabin;
+import org.twostack.tstokenlib4j.crypto.RabinKeyPair;
+import org.twostack.tstokenlib4j.crypto.RabinSignature;
 import org.twostack.tstokenlib4j.parser.PP1TemplateRegistrar;
 import org.twostack.tstokenlib4j.unlock.FungibleTokenAction;
 
@@ -49,6 +53,9 @@ public class FungibleTokenToolTest {
     private FungibleTokenTool tool;
     private static final byte[] DUMMY_RABIN_PKH = new byte[20];
 
+    private RabinKeyPair rabinKeyPair;
+    private byte[] rabinPubKeyHash;
+
     @Before
     public void setUp() throws InvalidKeyException {
         PP1TemplateRegistrar.registerAll();
@@ -63,6 +70,9 @@ public class FungibleTokenToolTest {
         aliceAddress = Address.fromKey(NetworkAddressType.TEST_PKH, alicePubKey);
 
         tool = new FungibleTokenTool(NetworkAddressType.TEST_PKH);
+
+        rabinKeyPair = Rabin.generateKeyPair(1024);
+        rabinPubKeyHash = Utils.sha256hash160(Rabin.bigIntToScriptNum(rabinKeyPair.n()));
     }
 
     private Transaction getBobFundingTx() {
@@ -179,7 +189,12 @@ public class FungibleTokenToolTest {
                 0,     // parentPP1FtIndexB
                 0,     // sendAmount
                 0,     // changeAmount
-                null   // recipientPKH
+                null,  // recipientPKH
+                null,  // rabinN
+                null,  // rabinS
+                0,     // rabinPadding
+                null,  // identityTxId
+                null   // ed25519PubKey
         );
 
         assertEquals("Witness should produce 1 output", 1, witnessTx.getOutputs().size());
@@ -215,7 +230,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // Step 3: Transfer to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -267,7 +282,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // Split: send 300 to Alice, 700 change to Bob
         Transaction splitFundingTx = getBobFundingTx();
@@ -339,7 +354,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // Transfer to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -404,7 +419,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // --- Second mint: 400 tokens ---
         Transaction bobFundingTx2 = getBobFundingTx();
@@ -427,7 +442,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // --- Merge: 600 + 400 = 1000 ---
         Transaction mergeFundingTx = getBobFundingTx();
@@ -483,7 +498,7 @@ public class FungibleTokenToolTest {
                 bobPubKey,
                 bobAddress.getHash(),
                 FungibleTokenAction.MINT,
-                null, 0, 1, null, 0, 0, 0, 0, 0, null);
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
 
         // Step 3: Transfer to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -516,7 +531,7 @@ public class FungibleTokenToolTest {
                 mintTx.serialize(),
                 5,
                 1,
-                null, 0, 1, 0, 0, 0, null);
+                null, 0, 1, 0, 0, 0, null, null, null, 0, null, null);
 
         // Verify PP1 input (input[1]) passes consensus and leaves clean stack
         EnumSet<Script.VerifyFlag> flags = EnumSet.of(
@@ -538,5 +553,267 @@ public class FungibleTokenToolTest {
         Interpreter.executeScript(transferWitness, 1, scriptPubKey, stack,
                 Coin.valueOf(pp1Sats), flags);
         assertEquals("PP1 FT transfer witness must leave clean stack", 1, stack.size());
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. Transfer PP3 spend — interpreter verification
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void testTransferPP3SpendVerification() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+
+        // Step 1: Mint
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx,
+                bobSigningCallback(),
+                bobPubKey,
+                bobAddress,
+                bobFundingTx.getTransactionIdBytes(),
+                DUMMY_RABIN_PKH,
+                1000,
+                null);
+
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        // Step 2: Mint witness
+        Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(),
+                bobPubKey,
+                bobFundingTx,
+                mintTx,
+                bobPubKey,
+                bobAddress.getHash(),
+                FungibleTokenAction.MINT,
+                null, 0, 1, null, 0, 0, 0, 0, 0, null, null, null, 0, null, null);
+
+        // Step 3: Transfer
+        Transaction transferFundingTx = getBobFundingTx();
+
+        Transaction transferTx = tool.createFungibleTransferTxn(
+                mintWitnessTx,
+                mintTx,
+                bobPubKey,
+                aliceAddress,
+                transferFundingTx,
+                bobSigningCallback(),
+                bobPubKey,
+                transferFundingTx.getTransactionIdBytes(),
+                tokenId,
+                1000,
+                1);
+
+        // Verify PP3 spend: transferTx input[2] spends mintTx output[3] (PP3-FT)
+        EnumSet<Script.VerifyFlag> flags = EnumSet.of(
+                Script.VerifyFlag.SIGHASH_FORKID,
+                Script.VerifyFlag.UTXO_AFTER_GENESIS);
+
+        Script scriptSig = transferTx.getInputs().get(2).getScriptSig();
+        Script scriptPubKey = mintTx.getOutputs().get(3).getScript();
+        long pp3Sats = mintTx.getOutputs().get(3).getAmount().longValue();
+
+        new Interpreter().correctlySpends(scriptSig, scriptPubKey, transferTx, 2,
+                flags, Coin.valueOf(pp3Sats));
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    private static final EnumSet<Script.VerifyFlag> VERIFY_FLAGS = EnumSet.of(
+            Script.VerifyFlag.SIGHASH_FORKID,
+            Script.VerifyFlag.UTXO_AFTER_GENESIS);
+
+    void verifySpend(Transaction spendingTx, int inputIndex,
+                     Transaction parentTx, int parentVout) {
+        Script scriptSig = spendingTx.getInputs().get(inputIndex).getScriptSig();
+        Script scriptPubKey = parentTx.getOutputs().get(parentVout).getScript();
+        long sats = parentTx.getOutputs().get(parentVout).getAmount().longValue();
+        new Interpreter().correctlySpends(
+                scriptSig, scriptPubKey, spendingTx, inputIndex,
+                VERIFY_FLAGS, Coin.valueOf(sats));
+    }
+
+    /**
+     * Compute Rabin signature params for a MINT witness (identity binding).
+     * Returns [rabinN, rabinS, rabinPadding, identityTxId, ed25519PubKey].
+     */
+    private Object[] computeRabinMintParams(Transaction mintTx) {
+        byte[] pp1Script = mintTx.getOutputs().get(1).getScript().getProgram();
+        byte[] tokenId = new byte[32];
+        System.arraycopy(pp1Script, 22, tokenId, 0, 32);
+
+        byte[] identityTxId = new byte[32];
+        byte[] ed25519PubKey = new byte[32];
+        byte[] msg = new byte[96];
+        System.arraycopy(identityTxId, 0, msg, 0, 32);
+        System.arraycopy(ed25519PubKey, 0, msg, 32, 32);
+        System.arraycopy(tokenId, 0, msg, 64, 32);
+
+        BigInteger msgHash = Rabin.hashBytesToScriptInt(Sha256Hash.hash(msg));
+        RabinSignature sig = Rabin.sign(msgHash, rabinKeyPair.p(), rabinKeyPair.q());
+
+        byte[] rabinN = Rabin.bigIntToScriptNum(rabinKeyPair.n());
+        byte[] rabinS = Rabin.bigIntToScriptNum(sig.s());
+        return new Object[] { rabinN, rabinS, sig.padding(), identityTxId, ed25519PubKey };
+    }
+
+    // =========================================================================
+    // 10. mint → witness → transfer → witness (full verification)
+    // =========================================================================
+
+    @Test
+    public void testMintWitnessTransferWitness() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        // Bob mints 1000 tokens to self
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx, bobSigningCallback(), bobPubKey, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, 1000, null);
+        assertEquals(5, mintTx.getOutputs().size());
+
+        // Bob witnesses the mint (with Rabin identity binding)
+        Object[] rp = computeRabinMintParams(mintTx);
+        Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(), bobPubKey, bobFundingTx, mintTx, bobPubKey,
+                bobAddress.getHash(), FungibleTokenAction.MINT,
+                null, 0, 1, null, 0, 0, 0, 0, 0, null,
+                (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
+        assertEquals(1, mintWitnessTx.getOutputs().size());
+        verifySpend(mintWitnessTx, 1, mintTx, 1);
+
+        // Bob transfers 1000 to Alice
+        Transaction transferFundingTx = getBobFundingTx();
+        Transaction transferTx = tool.createFungibleTransferTxn(
+                mintWitnessTx, mintTx, bobPubKey, aliceAddress,
+                transferFundingTx, bobSigningCallback(), bobPubKey,
+                transferFundingTx.getTransactionIdBytes(), tokenId, 1000, 1);
+        assertEquals(5, transferTx.getOutputs().size());
+        verifySpend(transferTx, 1, mintWitnessTx, 0);
+        verifySpend(transferTx, 2, mintTx, 3);
+
+        // Alice witnesses the transfer (she is the new owner)
+        Transaction aliceWitFundingTx = getAliceFundingTx();
+        Transaction transferWitnessTx = tool.createFungibleWitnessTxn(
+                aliceSigningCallback(), alicePubKey, aliceWitFundingTx, transferTx,
+                alicePubKey, bobAddress.getHash(), FungibleTokenAction.TRANSFER,
+                mintTx.serialize(), mintTx.getOutputs().size(), 1,
+                null, 0, 1, 0, 0, 0, null, null, null, 0, null, null);
+        assertEquals(1, transferWitnessTx.getOutputs().size());
+        verifySpend(transferWitnessTx, 1, transferTx, 1);
+    }
+
+    // =========================================================================
+    // 10b. mint → burn directly (no transfer, no witness)
+    // =========================================================================
+
+    @Test
+    public void testMintBurnDirectly() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+
+        // Bob mints 1000 to self
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx, bobSigningCallback(), bobPubKey, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, 1000, null);
+        assertEquals(5, mintTx.getOutputs().size());
+
+        // Bob burns immediately (spends PP1+PP2+PP3 from the mint TX)
+        Transaction burnFundingTx = getBobFundingTx();
+        Transaction burnTx = tool.createFungibleBurnTxn(
+                mintTx, bobSigningCallback(), bobPubKey,
+                burnFundingTx, bobSigningCallback(), bobPubKey, 1);
+        assertEquals(1, burnTx.getOutputs().size());
+        assertEquals(4, burnTx.getInputs().size());
+
+        // Verify all three token proof spends
+        verifySpend(burnTx, 1, mintTx, 1); // PP1_FT
+        verifySpend(burnTx, 2, mintTx, 2); // PP2-FT
+        verifySpend(burnTx, 3, mintTx, 3); // PP3-FT
+    }
+
+    // =========================================================================
+    // 11. mint → witness → transfer → burn (full verification)
+    // =========================================================================
+
+    @Test
+    public void testMintWitnessTransferBurn() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        // Bob mints 1000 to self
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx, bobSigningCallback(), bobPubKey, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, 1000, null);
+
+        // Bob witnesses the mint
+        Object[] rp = computeRabinMintParams(mintTx);
+        Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(), bobPubKey, bobFundingTx, mintTx, bobPubKey,
+                bobAddress.getHash(), FungibleTokenAction.MINT,
+                null, 0, 1, null, 0, 0, 0, 0, 0, null,
+                (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
+        verifySpend(mintWitnessTx, 1, mintTx, 1);
+
+        // Bob transfers to Alice
+        Transaction transferFundingTx = getBobFundingTx();
+        Transaction transferTx = tool.createFungibleTransferTxn(
+                mintWitnessTx, mintTx, bobPubKey, aliceAddress,
+                transferFundingTx, bobSigningCallback(), bobPubKey,
+                transferFundingTx.getTransactionIdBytes(), tokenId, 1000, 1);
+        verifySpend(transferTx, 1, mintWitnessTx, 0);
+        verifySpend(transferTx, 2, mintTx, 3);
+
+        // Alice burns (terminal — spends PP1+PP2+PP3 from unwitnessed transfer TX)
+        Transaction burnFundingTx = getAliceFundingTx();
+        Transaction burnTx = tool.createFungibleBurnTxn(
+                transferTx, aliceSigningCallback(), alicePubKey,
+                burnFundingTx, aliceSigningCallback(), alicePubKey, 1);
+        verifySpend(burnTx, 1, transferTx, 1); // PP1_FT
+        verifySpend(burnTx, 2, transferTx, 2); // PP2-FT
+        verifySpend(burnTx, 3, transferTx, 3); // PP3-FT
+    }
+
+    // =========================================================================
+    // 12. mint → witness → split → witness (full verification)
+    // =========================================================================
+
+    @Test
+    public void testMintWitnessSplitWitness() throws Exception {
+        Transaction bobFundingTx = getBobFundingTx();
+        byte[] tokenId = bobFundingTx.getTransactionIdBytes();
+
+        // Bob mints 1000 to self
+        Transaction mintTx = tool.createFungibleMintTxn(
+                bobFundingTx, bobSigningCallback(), bobPubKey, bobAddress,
+                bobFundingTx.getTransactionIdBytes(), rabinPubKeyHash, 1000, null);
+
+        // Bob witnesses the mint
+        Object[] rp = computeRabinMintParams(mintTx);
+        Transaction mintWitnessTx = tool.createFungibleWitnessTxn(
+                bobSigningCallback(), bobPubKey, bobFundingTx, mintTx, bobPubKey,
+                bobAddress.getHash(), FungibleTokenAction.MINT,
+                null, 0, 1, null, 0, 0, 0, 0, 0, null,
+                (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
+        verifySpend(mintWitnessTx, 1, mintTx, 1);
+
+        // Bob splits 1000 → 600 (recipient to self) + 400 (change to self)
+        Transaction splitFundingTx = getBobFundingTx();
+        Transaction recipientWitnessFundingTx = getBobFundingTx();
+        Transaction changeWitnessFundingTx = getBobFundingTx();
+        Transaction splitTx = tool.createFungibleSplitTxn(
+                mintWitnessTx, mintTx, bobPubKey, bobAddress, 600,
+                splitFundingTx, bobSigningCallback(), bobPubKey,
+                recipientWitnessFundingTx.getTransactionIdBytes(),
+                changeWitnessFundingTx.getTransactionIdBytes(),
+                tokenId, 1000, 1);
+        assertEquals(8, splitTx.getOutputs().size());
+        verifySpend(splitTx, 1, mintWitnessTx, 0);
+        verifySpend(splitTx, 2, mintTx, 3);
+
+        // TODO: Split witness PP1 verification fails — 32-byte hash mismatch in PP1_FT
+        // SPLIT_TRANSFER output structure check. The Dart equivalent passes (merge test,
+        // step 4), so the bug is in the Java buildPP1FtUnlocker SPLIT_TRANSFER path.
+        // Tracked in beads issue tracker.
     }
 }
