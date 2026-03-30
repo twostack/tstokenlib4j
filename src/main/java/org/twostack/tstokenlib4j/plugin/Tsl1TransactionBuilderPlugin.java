@@ -336,7 +336,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 yield new TokenTool(networkAddressType, null, feePerKb).createTokenIssuanceTxn(
                         fundingTx, fundingVout, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "rabinPKH"),
                         requireHexBytes(params, "metadataBytes"));
             }
@@ -352,14 +352,27 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         prevWitnessTx, prevTokenTx, ownerPubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, fundingVout, signer, pubKey,
-                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "tokenId"),
                         requireHexBytes(params, "rabinPKH"));
             }
             case "nft.witness" -> {
-                int fundingVout = resolveFundingVout(params, request);
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2 (output[2]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
+                byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                String committedTxidHex = Utils.HEX.encode(Utils.reverseBytes(committedTxid));
+                int fundingVout = (committedOutpoint[32] & 0xFF)
+                        | ((committedOutpoint[33] & 0xFF) << 8)
+                        | ((committedOutpoint[34] & 0xFF) << 16)
+                        | ((committedOutpoint[35] & 0xFF) << 24);
+                Transaction fundingTx = resolveTransaction(lookup, committedTxidHex);
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
                 if (parentTokenTxId.matches("^0+$")) {
@@ -858,7 +871,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 yield new RestrictedTokenTool(networkAddressType).createTokenIssuanceTxn(
                         fundingTx, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         optionalHexBytes(params, "metadataBytes"));
@@ -871,14 +884,24 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "tokenId"),
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"));
             }
             case "rnft.witness" -> {
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2 (output[2]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
+                byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                Transaction fundingTx = resolveTransaction(lookup,
+                        Utils.HEX.encode(Utils.reverseBytes(committedTxid)));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
                 if (parentTokenTxId.matches("^0+$")) {
@@ -917,7 +940,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 yield new RestrictedFungibleTokenTool(networkAddressType).createFungibleMintTxn(
                         fundingTx, signer, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
-                        requireHexBytes(params, "witnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
                         requireLong(params, "amount"),
@@ -933,7 +956,7 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         prevWitnessTx, prevTokenTx, pubKey,
                         requireAddress(params, "recipientAddress", networkAddressType),
                         fundingTx, signer, pubKey,
-                        requireHexBytes(params, "recipientWitnessFundingTxId"),
+                        resolveWitnessFundingTxId(params, request),
                         requireHexBytes(params, "tokenId"),
                         requireHexBytes(params, "rabinPKH"),
                         requireInt(params, "flags"),
@@ -981,8 +1004,18 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         optionalInt(params, "prevTripletBaseIndexB", 1));
             }
             case "rft.witness" -> {
-                Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
+
+                // PP2 (output[2]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
+                byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
+                byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                Transaction fundingTx = resolveTransaction(lookup,
+                        Utils.HEX.encode(Utils.reverseBytes(committedTxid)));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
                 if (parentTokenTxId.matches("^0+$")) {
