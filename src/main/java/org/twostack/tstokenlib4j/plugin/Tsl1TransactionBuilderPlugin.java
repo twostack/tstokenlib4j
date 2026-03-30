@@ -880,7 +880,12 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                if (parentTokenTxId.matches("^0+$")) {
+                    parentTokenTxBytes = new byte[0]; // issuance — no parent token
+                } else {
+                    parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
                 RestrictedTokenAction rnftAction = RestrictedTokenAction.valueOf(
                         requireString(params, "witnessAction"));
                 yield new RestrictedTokenTool(networkAddressType).createWitnessTxn(
@@ -979,7 +984,12 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                 Transaction fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
                 Transaction tokenTx = resolveTransaction(lookup, requireString(params, "tokenTxId"));
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
-                byte[] parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                byte[] parentTokenTxBytes;
+                if (parentTokenTxId.matches("^0+$")) {
+                    parentTokenTxBytes = new byte[0]; // issuance — no parent token
+                } else {
+                    parentTokenTxBytes = Utils.HEX.decode(resolveRawHex(lookup, parentTokenTxId));
+                }
                 RestrictedFungibleTokenAction rftAction = RestrictedFungibleTokenAction.valueOf(
                         requireString(params, "witnessAction"));
                 String parentTokenTxIdB = optionalString(params, "parentTokenTxIdB");
