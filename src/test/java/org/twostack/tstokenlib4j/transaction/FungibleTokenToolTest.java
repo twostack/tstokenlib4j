@@ -685,17 +685,20 @@ public class FungibleTokenToolTest {
         verifySpend(mintWitnessTx, 2, mintTx, 2); // PP2_FT witness verification
 
         // Bob transfers 1000 to Alice
+        // Two separate funding UTXOs: one for the transfer TX, one committed in PP2_FT for the witness.
+        // The witness funding must be Alice's UTXO because buildWitnessTxn uses a single signer
+        // for both funding and PP1 — and Alice is the new owner who must sign PP1.
         Transaction transferFundingTx = getBobFundingTx();
+        Transaction aliceWitFundingTx = getAliceFundingTx();
         Transaction transferTx = tool.createFungibleTransferTxn(
                 mintWitnessTx, mintTx, bobPubKey, aliceAddress,
                 transferFundingTx, bobSigningCallback(), bobPubKey,
-                transferFundingTx.getTransactionIdBytes(), tokenId, 1000, 1);
+                aliceWitFundingTx.getTransactionIdBytes(), tokenId, 1000, 1);
         assertEquals(5, transferTx.getOutputs().size());
         verifySpend(transferTx, 1, mintWitnessTx, 0);
         verifySpend(transferTx, 2, mintTx, 3);
 
-        // Alice witnesses the transfer (she is the new owner)
-        Transaction aliceWitFundingTx = getAliceFundingTx();
+        // Witness the transfer — Alice funds (committed UTXO) and owns (signs PP1)
         Transaction transferWitnessTx = tool.createFungibleWitnessTxn(
                 aliceSigningCallback(), alicePubKey, aliceWitFundingTx, transferTx,
                 alicePubKey, bobAddress.getHash(), FungibleTokenAction.TRANSFER,
@@ -703,8 +706,7 @@ public class FungibleTokenToolTest {
                 null, 0, 1, 0, 0, 0, null, null, null, 0, null, null);
         assertEquals(1, transferWitnessTx.getOutputs().size());
         verifySpend(transferWitnessTx, 1, transferTx, 1);
-        // PP2_FT (input[2]) not verified here: test uses aliceWitFundingTx which
-        // doesn't match the outpoint committed in PP2_FT (transferFundingTx)
+        verifySpend(transferWitnessTx, 2, transferTx, 2); // PP2_FT
     }
 
     // =========================================================================
