@@ -469,19 +469,18 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
                         ? Transaction.fromHex(tokenTxRawHex)
                         : resolveTransaction(lookup, requireString(params, "tokenTxId"));
 
-                // PP2-FT outpoint matching: extract committed outpoint from PP2 output,
-                // find matching UTXO in funding pool (same pattern as at.witness/sm.witness).
+                // PP2-FT (output[pp2Index]) commits to a specific funding outpoint. The witness
+                // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
                 int tripletBaseIndex = optionalInt(params, "tripletBaseIndex", 1);
                 int pp2Index = tripletBaseIndex + 1;
                 byte[] pp2Script = tokenTx.getOutputs().get(pp2Index).getScript().getProgram();
                 byte[] committedOutpoint = extractPP2FtFundingOutpoint(pp2Script);
-                Transaction fundingTx;
-                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
-                if (matchedUtxo != null) {
-                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
-                } else {
-                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                }
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                Transaction fundingTx = resolveTransaction(lookup,
+                        Utils.HEX.encode(Utils.reverseBytes(committedTxid)));
 
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
@@ -630,20 +629,18 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
 
                 // PP2 (output[2]) commits to a specific funding outpoint. The witness
                 // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
-                // Extract the committed outpoint and find the matching UTXO.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
                 byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
                 byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
-                int fundingVout;
-                Transaction fundingTx;
-                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
-                if (matchedUtxo != null) {
-                    fundingVout = matchedUtxo.vout();
-                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
-                } else {
-                    // Fallback for paired path where the UTXO is already correct
-                    fundingVout = resolveFundingVout(params, request);
-                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                }
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                String committedTxidHex = Utils.HEX.encode(Utils.reverseBytes(committedTxid));
+                int fundingVout = (committedOutpoint[32] & 0xFF)
+                        | ((committedOutpoint[33] & 0xFF) << 8)
+                        | ((committedOutpoint[34] & 0xFF) << 16)
+                        | ((committedOutpoint[35] & 0xFF) << 24);
+                Transaction fundingTx = resolveTransaction(lookup, committedTxidHex);
 
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
@@ -802,16 +799,14 @@ public class Tsl1TransactionBuilderPlugin implements TransactionBuilderPlugin {
 
                 // PP2 (output[2]) commits to a specific funding outpoint. The witness
                 // TX must use that exact UTXO or PP2's hashPrevouts verification fails.
-                // Same pattern as at.witness — extract committed outpoint, find matching UTXO.
+                // Resolve the committed UTXO directly — the coordinator's funding pool
+                // may not include it since each call selects UTXOs independently.
                 byte[] pp2Script = tokenTx.getOutputs().get(2).getScript().getProgram();
                 byte[] committedOutpoint = extractPP2FundingOutpoint(pp2Script);
-                Transaction fundingTx;
-                var matchedUtxo = findUtxoByOutpoint(committedOutpoint, request);
-                if (matchedUtxo != null) {
-                    fundingTx = resolveTransaction(lookup, matchedUtxo.txid());
-                } else {
-                    fundingTx = lookupTransaction(lookup, params, "fundingTxId", request);
-                }
+                byte[] committedTxid = new byte[32];
+                System.arraycopy(committedOutpoint, 0, committedTxid, 0, 32);
+                Transaction fundingTx = resolveTransaction(lookup,
+                        Utils.HEX.encode(Utils.reverseBytes(committedTxid)));
 
                 String parentTokenTxId = requireString(params, "parentTokenTxId");
                 byte[] parentTokenTxBytes;
