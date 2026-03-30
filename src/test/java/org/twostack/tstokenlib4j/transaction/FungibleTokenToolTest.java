@@ -682,6 +682,7 @@ public class FungibleTokenToolTest {
                 (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
         assertEquals(1, mintWitnessTx.getOutputs().size());
         verifySpend(mintWitnessTx, 1, mintTx, 1);
+        verifySpend(mintWitnessTx, 2, mintTx, 2); // PP2_FT witness verification
 
         // Bob transfers 1000 to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -702,6 +703,8 @@ public class FungibleTokenToolTest {
                 null, 0, 1, 0, 0, 0, null, null, null, 0, null, null);
         assertEquals(1, transferWitnessTx.getOutputs().size());
         verifySpend(transferWitnessTx, 1, transferTx, 1);
+        // PP2_FT (input[2]) not verified here: test uses aliceWitFundingTx which
+        // doesn't match the outpoint committed in PP2_FT (transferFundingTx)
     }
 
     // =========================================================================
@@ -754,6 +757,7 @@ public class FungibleTokenToolTest {
                 null, 0, 1, null, 0, 0, 0, 0, 0, null,
                 (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
         verifySpend(mintWitnessTx, 1, mintTx, 1);
+        verifySpend(mintWitnessTx, 2, mintTx, 2); // PP2_FT
 
         // Bob transfers to Alice
         Transaction transferFundingTx = getBobFundingTx();
@@ -796,6 +800,7 @@ public class FungibleTokenToolTest {
                 null, 0, 1, null, 0, 0, 0, 0, 0, null,
                 (byte[]) rp[0], (byte[]) rp[1], (int) rp[2], (byte[]) rp[3], (byte[]) rp[4]);
         verifySpend(mintWitnessTx, 1, mintTx, 1);
+        verifySpend(mintWitnessTx, 2, mintTx, 2); // PP2_FT
 
         // Bob splits 1000 → 600 (recipient to self) + 400 (change to self)
         Transaction splitFundingTx = getBobFundingTx();
@@ -820,6 +825,7 @@ public class FungibleTokenToolTest {
                 null, null, 0, null, null);
         assertEquals(1, recipientWitnessTx.getOutputs().size());
         verifySpend(recipientWitnessTx, 1, splitTx, 1); // PP1_FT split witness
+        verifySpend(recipientWitnessTx, 2, splitTx, 2); // PP2_FT split witness
 
         // Witness for change triplet (base index 4)
         Transaction changeWitnessTx = tool.createFungibleWitnessTxn(
@@ -830,5 +836,6 @@ public class FungibleTokenToolTest {
                 null, null, 0, null, null);
         assertEquals(1, changeWitnessTx.getOutputs().size());
         verifySpend(changeWitnessTx, 1, splitTx, 4); // PP1_FT change witness
+        verifySpend(changeWitnessTx, 2, splitTx, 5); // PP2_FT change witness
     }
 }
